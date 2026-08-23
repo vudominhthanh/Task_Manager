@@ -1,0 +1,11 @@
+package Task_Manager.activity_service.repository;
+
+import Task_Manager.activity_service.entity.Activity;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.List;
+import java.util.UUID;
+
+public interface ActivityRepository extends JpaRepository<Activity, UUID> {
+    List<Activity> findByTargetIdOrderByCreatedAtDesc(String id);
+}
