@@ -1,0 +1,5 @@
+spring:
+  application:
+    name: common-lib
+jwt:
+  secret: "qwertyuiopasdfghjklzxcvbnm1234567890"

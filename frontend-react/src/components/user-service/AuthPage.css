@@ -1,0 +1,182 @@
+/* Nhúng font chữ Inter chuẩn mực của các hệ thống UI/UX hiện đại */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+:root {
+  --primary-color: #4f46e5; /* Màu xanh tím giống nút "Thêm task" */
+  --primary-hover: #4338ca;
+  --bg-color: #f4f7fb; /* Nền xám xanh nhạt giống ảnh mẫu */
+  --text-main: #1e293b;
+  --text-muted: #64748b;
+  --border-color: #e2e8f0;
+  --card-bg: #ffffff;
+}
+
+/* --- Tổng thể --- */
+/* .auth-layout {
+  min-height: 100vh;
+  width: 100%;
+  background-color: var(--bg-color);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-family: 'Inter', sans-serif;
+  padding: 20px;
+} */
+ /* --- Tổng thể --- */
+.auth-layout {
+  min-height: 100vh;
+  width: 100%;
+  background-color: var(--bg-color); /* Màu nền xám nhạt mặc định */
+  
+  /* HỆ THỐNG VẼ LƯỚI CARO BẰNG CSS */
+  background-image: 
+    linear-gradient(rgba(79, 70, 229, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(79, 70, 229, 0.07) 1px, transparent 1px);
+  background-size: 32px 32px; /* Kích thước mỗi ô vuông (32x32) */
+
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-family: 'Inter', sans-serif;
+  padding: 20px;
+}
+
+/* --- Card Form --- */
+.auth-card {
+  background-color: var(--card-bg);
+  width: 100%;
+  max-width: 440px;
+  border-radius: 16px;
+  padding: 40px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  border: 1px solid var(--border-color);
+  animation: slideUpFade 0.5s ease-out;
+}
+
+@keyframes slideUpFade {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --- Header & Logo --- */
+.auth-header {
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.auth-logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 16px;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--primary-color);
+}
+
+.auth-logo-icon {
+  background-color: var(--primary-color);
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.auth-title {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0 0 8px 0;
+}
+
+.auth-subtitle {
+  font-size: 14px;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* --- Form Elements --- */
+.input-group {
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.input-group label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-main);
+  margin-bottom: 6px;
+}
+
+.input-group input {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 14px;
+  color: var(--text-main);
+  background-color: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  outline: none;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.input-group input::placeholder {
+  color: #94a3b8;
+}
+
+.input-group input:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.15); /* Viền sáng màu xanh */
+}
+
+/* --- Nút bấm --- */
+.btn-submit {
+  width: 100%;
+  padding: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+  background-color: var(--primary-color);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  margin-top: 10px;
+}
+
+.btn-submit:hover {
+  background-color: var(--primary-hover);
+}
+
+/* --- Chuyển trang --- */
+.auth-switch {
+  margin-top: 24px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+.auth-switch span {
+  color: var(--primary-color);
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.auth-switch span:hover {
+  color: var(--primary-hover);
+  text-decoration: underline;
+}
