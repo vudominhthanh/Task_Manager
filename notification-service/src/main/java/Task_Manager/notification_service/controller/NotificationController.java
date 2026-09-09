@@ -1,41 +1,49 @@
 package Task_Manager.notification_service.controller;
 
-import Task_Manager.notification_service.Mapper.NotificationMapper;
+import Task_Manager.notification_service.Service.NotificationService;
 import Task_Manager.notification_service.dto.NotificationResponse;
-import Task_Manager.notification_service.repository.NotificationRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
 import java.util.List;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/notifications")
 @RequiredArgsConstructor
+@CrossOrigin("*")
 public class NotificationController {
-    private final NotificationRepository notificationRepository;
-    private final NotificationMapper notificationMapper;
+    private final NotificationService notificationService;
 
-    @GetMapping("/user/{userId}")
-    public ResponseEntity<List<NotificationResponse>> getNotifications(@PathVariable UUID userId) {
-        List<NotificationResponse> responses = notificationRepository
-                .findByRecipientIdOrderByCreatedAtDesc(userId)
-                .stream()
-                .map(notificationMapper::toDto)
-                .collect(Collectors.toList());
+    @GetMapping
+    public ResponseEntity<List<NotificationResponse>> getUserNotifications(Principal principal) {
+        UUID userId = UUID.fromString(principal.getName());
 
-        return ResponseEntity.ok(responses);
+        List<NotificationResponse> notifications = notificationService.getUserNotifications(userId);
+        return ResponseEntity.ok(notifications);
     }
 
     @PutMapping("/{id}/read")
-    public ResponseEntity<Void> markAsRead(@PathVariable UUID id) {
-        notificationRepository.findById(id).ifPresent(notification -> {
-            notification.setRead(true);
-            notificationRepository.save(notification);
-        });
+    public ResponseEntity<Void> markAsRead(@PathVariable UUID id,  Principal principal) {
+        UUID userId = UUID.fromString(principal.getName());
+        notificationService.markAsRead(id, userId);
         return ResponseEntity.ok().build();
+    }
+
+    @PatchMapping("/read-all")
+    public ResponseEntity<Void> markAllAsRead(Principal principal) {
+        UUID userId = UUID.fromString(principal.getName());
+        notificationService.markAllAsRead(userId);
+        return ResponseEntity.ok().build();
+    }
+
+    @GetMapping("/unread-count")
+    public ResponseEntity<Long> getUnreadCount(Principal principal) {
+        UUID userId = UUID.fromString(principal.getName());
+        long count = notificationService.countUnreadNotifications(userId);
+        return ResponseEntity.ok(count);
     }
 }

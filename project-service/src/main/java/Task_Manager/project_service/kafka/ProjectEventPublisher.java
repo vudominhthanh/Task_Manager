@@ -1,36 +1,54 @@
 package Task_Manager.project_service.kafka;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.stereotype.Repository;
 
 import java.util.UUID;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class ProjectEventPublisher {
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final ObjectMapper objectMapper;
     private static final String TOPIC = "project_events";
 
+    private void sendEvent(UUID projectId, String type, Object payload) {
+        try {
+            ProjectEvent event = new ProjectEvent(type, payload);
+            String jsonPayload = objectMapper.writeValueAsString(event);
+            kafkaTemplate.send(TOPIC, projectId.toString(), jsonPayload);
+        } catch (Exception e) {
+            log.error("Lỗi serialize Kafka event [{}]: {}", type, e.getMessage());
+        }
+    }
+
     public void publishProjectCreated(UUID projectId, Object payload) {
-        kafkaTemplate.send(TOPIC, projectId.toString(), new ProjectEvent("PROJECT_CREATED", payload));
+        sendEvent(projectId, "PROJECT_CREATED", payload);
     }
 
     public void publishProjectUpdated(UUID projectId, Object payload) {
-        kafkaTemplate.send(TOPIC, projectId.toString(), new ProjectEvent("PROJECT_UPDATED", payload));
+        sendEvent(projectId, "PROJECT_UPDATED", payload);
     }
 
-    public void publishProjectDeleted(UUID projectId) {
-        kafkaTemplate.send(TOPIC, projectId.toString(), new ProjectEvent("PROJECT_DELETED", projectId));
+    public void publishProjectDeleted(UUID projectId, Object payload) {
+        sendEvent(projectId, "PROJECT_DELETED", payload);
     }
 
     public void publishMemberAdded(UUID projectId, Object payload) {
-        kafkaTemplate.send(TOPIC, projectId.toString(), new ProjectEvent("MEMBER_ADDED", payload));
+        sendEvent(projectId, "MEMBER_ADDED", payload);
     }
 
     public void publishMemberRemoved(UUID projectId, Object payload) {
-        kafkaTemplate.send(TOPIC, projectId.toString(), new ProjectEvent("MEMBER_REMOVED", payload));
+        sendEvent(projectId, "MEMBER_REMOVED", payload);
+    }
+
+    public void publishMemberRoleUpdated(UUID projectId, Object payload) {
+        sendEvent(projectId, "MEMBER_ROLE_UPDATED", payload);
     }
 }
 

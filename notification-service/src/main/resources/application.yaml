@@ -4,16 +4,19 @@ server:
 spring:
   application:
     name: notification-service
+  config:
+    import: optional:configserver:http://localhost:8888
   datasource:
     url: jdbc:postgresql://localhost:5432/notifications
     username: postgres
     password: 123456
     driver-class-name: org.postgresql.Driver
   kafka:
-    bootsrap-servers: localhost:9092
+    bootstrap-servers: localhost:9092
     consumer:
-      group-id: activities
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      group-id: notifications
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       properties:
         spring.json.trusted.package: "*"
   jpa:

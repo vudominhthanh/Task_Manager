@@ -34,7 +34,9 @@ public class CommentController {
             @RequestBody CommentRequest commentRequest,
             Authentication authentication) {
         UUID userId = UUID.fromString(authentication.getName());
-        return ResponseEntity.ok(commentService.addComment(taskId,userId,commentRequest));
+        boolean isSystemAdmin = authentication.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("SYS_AD"));
+        return ResponseEntity.ok(commentService.addComment(taskId,userId,commentRequest, isSystemAdmin));
     }
 
     @PutMapping("/{commentId}")
@@ -43,7 +45,9 @@ public class CommentController {
             @RequestBody CommentRequest commentRequest,
             Authentication authentication) {
         UUID userId = UUID.fromString(authentication.getName());
-        return ResponseEntity.ok(commentService.updateComment(commentId,userId,commentRequest));
+        boolean isSystemAdmin = authentication.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("SYS_AD"));
+        return ResponseEntity.ok(commentService.updateComment(commentId,userId,commentRequest, isSystemAdmin));
     }
 
     @DeleteMapping("/{commentId}")
@@ -51,7 +55,9 @@ public class CommentController {
             @PathVariable UUID commentId,
             Authentication authentication) {
         UUID userId = UUID.fromString(authentication.getName());
-        commentService.deleteComment(commentId,userId);
+        boolean isSystemAdmin = authentication.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("SYS_AD"));
+        commentService.deleteComment(commentId,userId, isSystemAdmin);
         return ResponseEntity.noContent().build();
     }
 }

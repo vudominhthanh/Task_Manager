@@ -1,0 +1,44 @@
+package Task_Manager.report_service.dto;
+
+import lombok.*;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.UUID;
+
+public class ReportResponse {
+
+    @Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor
+    public static class TaskDto {
+        private UUID id;
+        private UUID projectId;
+        private String title;
+        private String status;
+        private String priority;
+        private UUID assigneeId;
+        private UUID reporterId;
+        private LocalDate startDate;
+        private LocalDate dueDate;
+        private UUID parentTaskId;
+        private LocalDateTime createdAt;
+        private LocalDateTime updatedAt;
+    }
+
+    @Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor
+    public static class ProjectDropdownDto {
+        private UUID id;
+        private String name;
+    }
+
+    @Getter @Setter @Builder @NoArgsConstructor @AllArgsConstructor
+    public static class ProjectMemberDto {
+        private UUID projectId;
+        private UUID userId;
+        private String username;
+        private String fullName;
+        private String email;
+        private String role;
+        private String avatar;
+    }
+}

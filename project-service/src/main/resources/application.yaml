@@ -4,11 +4,17 @@ server:
 spring:
   application:
     name: project-service
+  config:
+    import: optional:configserver:http://localhost:8888
   datasource:
     url: jdbc:postgresql://localhost:5432/Task_Manager
     username: postgres
-    password: secretpassword
+    password: 123456
     driver-class-name: org.postgresql.Driver
+  kafka:
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
   jpa:
     hibernate:
       ddl-auto: update

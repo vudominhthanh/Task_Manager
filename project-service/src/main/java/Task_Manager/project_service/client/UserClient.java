@@ -1,13 +1,25 @@
 package Task_Manager.project_service.client;
 
+import Task_Manager.project_service.dto.ProjectMemberResponse;
+import Task_Manager.project_service.dto.UserDto;
 import org.springframework.cloud.openfeign.FeignClient;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
-@FeignClient(name = "user-service")
+@FeignClient(name = "user-service", url = "http://localhost:8086")
 public interface UserClient {
-    // Project Service gọi API này của User Service để xác thực
     @GetMapping("/api/users/{userId}/exists")
     boolean existsById(@PathVariable("userId") UUID userId);
+
+    @PostMapping("/api/users/batch")
+    List<ProjectMemberResponse> getUsersByIds(@RequestBody List<UUID> userIds);
+
+    @GetMapping("/api/users/email")
+    UserDto getUserByEmail(@RequestParam("email") String email);
+
+    @GetMapping("/api/users/{userId}")
+    UserDto getUserById(@PathVariable("userId") UUID userId);
 }

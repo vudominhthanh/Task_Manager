@@ -7,7 +7,6 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
@@ -18,8 +17,8 @@ import java.util.ArrayList;
 
 @Component
 public class JwtValidationFilter extends OncePerRequestFilter {
-    @Value("{jwt.secret}")
-    private String jwtSecret;
+//    @Value("${jwt.secret}")
+    private String jwtSecret = "qwertyuiopasdfghjklzxcvbnm1234567890qwertyuiopasdfghjklzxcvbnm";
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
@@ -36,7 +35,6 @@ public class JwtValidationFilter extends OncePerRequestFilter {
                         .getBody();
 
                 String userId = claims.getSubject();
-
                 UsernamePasswordAuthenticationToken authentication
                         = new UsernamePasswordAuthenticationToken(userId, null, new ArrayList<>());
 

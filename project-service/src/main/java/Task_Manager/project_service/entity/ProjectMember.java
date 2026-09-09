@@ -23,7 +23,7 @@ public class ProjectMember {
     private UUID userId;
 
     @Enumerated(EnumType.STRING)
-    @Column(length = 10,nullable = false, name = "project_role")
+    @Column(length = 10,nullable = false, name = "role")
     @Builder.Default
     private ProjectRole projectRole = ProjectRole.MEMBER;
 

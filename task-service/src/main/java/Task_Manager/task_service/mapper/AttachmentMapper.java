@@ -12,6 +12,7 @@ import java.util.UUID;
 @Mapper(componentModel = "spring")
 public interface AttachmentMapper {
     @Mapping(source = "task.id", target = "taskId")
+    @Mapping(source = "task.project", target = "projectId")
     AttachmentResponse toResponse(Attachment attachment);
 
     @Mapping(source = "task", target = "task")
@@ -21,5 +22,6 @@ public interface AttachmentMapper {
     @Mapping(source = "request.fileSize", target = "fileSize")
     @Mapping(source = "request.s3Key", target = "s3Key")
     @Mapping(target = "id", ignore = true)
+    @Mapping(target = "createdAt", ignore = true)
     Attachment toEntity(AttachmentRequest request, Task task, UUID userId);
 }

@@ -3,13 +3,11 @@ package Task_Manager.user_service.security;
 import Task_Manager.user_service.entity.User;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
-import java.security.Key;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -17,7 +15,7 @@ import java.util.function.Function;
 
 @Component
 public class JwtUtil {
-    private final String SECRET_KEY="qwertyuiopasdfghjklzxcvbnm1234567890";
+    private final String SECRET_KEY="qwertyuiopasdfghjklzxcvbnm1234567890qwertyuiopasdfghjklzxcvbnm";
     private final long EXPIRATION_TIME= 86400000;
 
 
@@ -40,7 +38,7 @@ public class JwtUtil {
 
         return Jwts.builder()
                 .claims(claims)
-                .subject(user.getEmail())
+                .subject(user.getId().toString())
                 .issuedAt(new Date())
                 .expiration(new Date(System.currentTimeMillis() + EXPIRATION_TIME))
                 .signWith(getSignInKey())
@@ -48,8 +46,7 @@ public class JwtUtil {
     }
 
     public boolean isTokenValid(String token, UserDetails userDetails) {
-        final String username = extractUsername(token);
-        return  (username.equals(userDetails.getUsername()) && !isTokenExpired(token));
+        return  !isTokenExpired(token);
     }
 
     private boolean isTokenExpired(String token) {
@@ -62,7 +59,7 @@ public class JwtUtil {
 
     private Claims extractAllClaims(String token) {
         return Jwts.parser()
-                .setSigningKey(getSignInKey())
+                .verifyWith(getSignInKey())
                 .build()
                 .parseClaimsJws(token)
                 .getBody();

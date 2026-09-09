@@ -6,6 +6,6 @@ import java.util.UUID;
 
 @Data
 public class ProjectMemberRequest {
-    private UUID userId;
+    private String email;
     private ProjectRole projectRole;
 }

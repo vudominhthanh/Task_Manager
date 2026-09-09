@@ -6,6 +6,7 @@ import Task_Manager.task_service.service.TaskService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.parameters.P;
 import org.springframework.web.bind.annotation.*;
 
@@ -29,28 +30,55 @@ public class TaskController {
     }
 
     @PostMapping
-    public ResponseEntity<TaskResponse> createTask(@RequestBody TaskRequest taskRequest) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(taskService.createTask(taskRequest));
+    public ResponseEntity<TaskResponse> createTask(@RequestBody TaskRequest taskRequest, Authentication authentication) {
+        UUID userId = UUID.fromString(authentication.getName());
+        boolean isSystemAdmin = authentication.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("SYS_AD"));
+        return ResponseEntity.status(HttpStatus.CREATED).body(taskService.createTask(taskRequest, userId, isSystemAdmin));
     }
 
     @PostMapping("/{parentTaskId}/sub-tasks")
-    public  ResponseEntity<TaskResponse> createSubTask(@PathVariable UUID parentTaskId, @RequestBody TaskRequest taskRequest) {
-        return  ResponseEntity.status(HttpStatus.CREATED).body(taskService.createSubTask(parentTaskId, taskRequest));
+    public  ResponseEntity<TaskResponse> createSubTask(@PathVariable UUID parentTaskId, @RequestBody TaskRequest taskRequest, Authentication authentication) {
+        UUID userId = UUID.fromString(authentication.getName());
+        boolean isSystemAdmin = authentication.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("SYS_AD"));
+        return  ResponseEntity.status(HttpStatus.CREATED).body(taskService.createSubTask(parentTaskId, taskRequest, userId, isSystemAdmin));
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<TaskResponse> updateTask(@PathVariable UUID id, @RequestBody TaskRequest taskRequest) {
-        return ResponseEntity.ok(taskService.updateTask(id, taskRequest));
+    public ResponseEntity<TaskResponse> updateTask(@PathVariable UUID id, @RequestBody TaskRequest taskRequest, Authentication authentication) {
+        UUID userId = UUID.fromString(authentication.getName());
+        boolean isSystemAdmin = authentication.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("SYS_AD"));
+        return ResponseEntity.ok(taskService.updateTask(id, taskRequest, userId, isSystemAdmin));
     }
 
     @PatchMapping("/{id}/status")
-    public ResponseEntity<TaskResponse> updateTaskStatus(@PathVariable UUID id, @RequestBody TaskRequest taskRequest) {
-        return ResponseEntity.ok(taskService.updateTaskStatus(id, taskRequest));
+    public ResponseEntity<TaskResponse> updateTaskStatus(@PathVariable UUID id, @RequestBody TaskRequest taskRequest, Authentication authentication) {
+        UUID userId = UUID.fromString(authentication.getName());
+        boolean isSystemAdmin = authentication.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("SYS_AD"));
+        return ResponseEntity.ok(taskService.updateTaskStatus(id, taskRequest, userId, isSystemAdmin));
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteTask(@PathVariable UUID id) {
-        taskService.deleteTask(id);
+    public ResponseEntity<Void> deleteTask(@PathVariable UUID id, Authentication authentication) {
+        UUID userId = UUID.fromString(authentication.getName());
+        boolean isSystemAdmin = authentication.getAuthorities().stream()
+                .anyMatch(auth -> auth.getAuthority().equals("SYS_AD"));
+        taskService.deleteTask(id, userId, isSystemAdmin);
         return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/batch")
+    public ResponseEntity<List<TaskResponse>> getTasksByIds(@RequestBody List<UUID> taskIds) {
+        List<TaskResponse> tasks = taskService.getTasksByIds(taskIds);
+        return ResponseEntity.ok(tasks);
+    }
+
+    @GetMapping("/assignee/me")
+    public ResponseEntity<List<TaskResponse>> getMyAssignedTasks(Authentication authentication) {
+        UUID userId = UUID.fromString(authentication.getName());
+        return ResponseEntity.ok(taskService.getTasksByAssigneeId(userId));
     }
 }

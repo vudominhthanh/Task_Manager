@@ -1,32 +1,31 @@
 import { Sidebar } from "lucide-react";
 import React from "react";
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import Header from "../layout/Header";
+import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import RightAside from "../layout/RightAside";
 import LeftAside from "../layout/LeftAside";
+import { useGlobalWebSocket } from "../../hooks/useGlobalWebSocket";
 
 const Home = () => {
-  const [activeTask, setActiveTask] = useState(null);
+  const [selectedTaskId, setSelectedTaskId] = useState(null);
 
-  const handleTaskClick = (taskData) => {
-    setActiveTask(taskData);
-  };
+  useGlobalWebSocket();
+
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-[240px_1fr_380px] h-screen w-full bg-white text-gray-800 overflow-hidden font-sans">
-      <div className="hidden lg:block border-r border-gray-200">
+    <div className="grid grid-cols-1 lg:grid-cols-[220px_minmax(0,_1fr)_330px] h-screen w-full bg-[#F9FAFB] text-gray-800 overflow-hidden font-sans">
+      <div className="hidden lg:block border-r border-gray-200 z-10">
         <LeftAside />
       </div>
 
-      <div className="flex flex-col min-w-0 bg-[#F9FAFB] overflow-hidden">
-        <Header />
-        <main className="flex-1 overflow-x-auto p-6">
-          <p className="text-gray-500">Main Content Area</p>
-        </main>
+      <div className="flex flex-col min-w-0 bg-[#F9FAFB] overflow-hidden h-full">
+        <Outlet context={{ selectedTaskId, setSelectedTaskId }} />
       </div>
 
-      <div className="hidden lg:block border-l border-gray-200 shadow-[-4px_0_15px_rgba(0,0,0,0.02)]">
-        <RightAside />
+      <div className="hidden lg:block border-l border-gray-200 shadow-[-4px_0_15px_rgba(0,0,0,0.02)] z-10 h-full overflow-hidden bg-white">
+        <RightAside
+          selectedTaskId={selectedTaskId}
+          onCloseTask={() => setSelectedTaskId(null)}
+        />
       </div>
     </div>
   );

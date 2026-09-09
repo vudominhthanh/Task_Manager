@@ -1,6 +1,6 @@
 package Task_Manager.activity_service.client;
 
-import lombok.Data;
+import Task_Manager.activity_service.dto.UserDto;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -11,11 +11,4 @@ import java.util.UUID;
 public interface UserClient {
     @GetMapping("/api/users/{id}")
     UserDto getUserById(@PathVariable("id") UUID id);
-}
-
-@Data
-class UserDto {
-    private UUID id;
-    private String username;
-    private String avatarUrl;
 }

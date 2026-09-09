@@ -17,8 +17,12 @@ public interface ProjectRepository extends JpaRepository<Project, UUID> {
 
     @Query("SELECT DISTINCT p FROM Project p LEFT JOIN ProjectMember pm ON p.id = pm.projectId " +
             "WHERE (p.ownerId = :userId OR pm.userId = :userId) " +
-            "AND (:keyword IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', :keyword, '%')))")
+            "AND (:keyword IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%')))")
     Page<Project> searchInvolvedProjects(@Param("userId") UUID userId,
                                          @Param("keyword") String keyword,
                                          Pageable pageable);
+
+    @Query("SELECT p.id FROM Project p WHERE p.ownerId = :userId")
+    List<UUID> findProjectIdsByUserId(@Param("userId") UUID userId);
+
 }

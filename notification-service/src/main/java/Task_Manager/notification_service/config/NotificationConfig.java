@@ -22,7 +22,7 @@ public class NotificationConfig implements WebSocketMessageBrokerConfigurer {
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {
-        registry.addEndpoint("//ws-notifications")
+        registry.addEndpoint("/ws-notifications")
                 .setAllowedOriginPatterns("*")
                 .withSockJS();
     }
@@ -30,8 +30,7 @@ public class NotificationConfig implements WebSocketMessageBrokerConfigurer {
     @Bean
     public RequestInterceptor requestInterceptor() {
         return requestTemplate -> {
-            ServletRequestAttributes attributes =
-                    (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
             if (attributes != null) {
                 String token = attributes.getRequest().getHeader("Authorization");
                 if (token != null) {

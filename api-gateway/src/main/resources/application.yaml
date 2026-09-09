@@ -44,6 +44,11 @@ spring:
           uri: lb://activity-service
           predicates:
             - Path=/api/activity/**
+
+        - id: websocket-route
+          uri: lb:ws://notification-service
+          predicates:
+            - Path=/ws/**
   eureka:
     client:
       service-url:

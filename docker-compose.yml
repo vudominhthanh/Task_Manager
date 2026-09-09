@@ -30,7 +30,7 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: 123456
-      POSTGRES_MULTIPLE_DATABASES: Task_Manager,activities,notifications
+      POSTGRES_MULTIPLE_DATABASES: Task_Manager,activities,notifications, reports
     ports:
       - "5432:5432"
     volumes:

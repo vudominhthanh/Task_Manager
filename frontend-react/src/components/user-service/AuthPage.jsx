@@ -43,7 +43,7 @@ const AuthPage = () => {
 
       window.location.href = "/Home";
     } catch (error) {
-      const errorMsg = error.response?.data?.message || "Lỗi kết nối Server!";
+      const errorMsg = error.message || "Lỗi kết nối Server!";
       alert(errorMsg);
     }
   };
@@ -60,7 +60,7 @@ const AuthPage = () => {
       setIsRegistering(false); 
     } catch (error) {
       const errorMsg = error.response?.data?.message || "Lỗi đăng ký!";
-      alert("Đăng ký thất bại: " + errorMsg);
+      alert(errorMsg);
     }
   };
 

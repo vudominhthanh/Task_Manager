@@ -1,5 +1,6 @@
 spring:
   application:
     name: common-lib
-jwt:
-  secret: "qwertyuiopasdfghjklzxcvbnm1234567890"
+
+#jwt:
+#  secret: "qwertyuiopasdfghjklzxcvbnm1234567890qwertyuiopasdfghjklzxcvbnm"

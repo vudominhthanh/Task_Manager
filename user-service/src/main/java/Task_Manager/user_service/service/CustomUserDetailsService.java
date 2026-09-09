@@ -18,8 +18,15 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     @Override
     public UserDetails loadUserByUsername(String identifier) throws UsernameNotFoundException {
-        User user = userRepository.findByEmailOrUsername(identifier)
-                .orElseThrow(() -> new UsernameNotFoundException("Không tìm thấy tài khoản: " + identifier));
+        User user;
+
+        if (identifier.matches("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")) {
+            user = userRepository.findById(java.util.UUID.fromString(identifier))
+                    .orElseThrow(() -> new UsernameNotFoundException("Không tìm thấy ID: " + identifier));
+        } else {
+            user = userRepository.findByEmailOrUsername(identifier)
+                    .orElseThrow(() -> new UsernameNotFoundException("Không tìm thấy tài khoản: " + identifier));
+        }
 
         return new CustomUserDetails(user);
     }

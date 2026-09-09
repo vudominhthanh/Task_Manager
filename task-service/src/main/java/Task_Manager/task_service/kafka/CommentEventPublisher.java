@@ -1,27 +1,41 @@
 package Task_Manager.task_service.kafka;
 
-import Task_Manager.task_service.dto.CommentResponse;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;
 
+@Slf4j
 @Component
 @RequiredArgsConstructor
 public class CommentEventPublisher {
-    private KafkaTemplate<String, Object> kafkaTemplate;
+    private final KafkaTemplate<String, String> kafkaTemplate;
+    private final ObjectMapper objectMapper;
     private static final String TOPIC = "comment_events";
 
-    public void publishCommentCreated(CommentResponse commentResponse) {
-        kafkaTemplate.send(TOPIC, "COMMENT_CREATED", commentResponse);
+    private void sendEvent(UUID commentId, String type, Object payload) {
+        try {
+            CommentEvent event = new CommentEvent(type, payload);
+            String jsonPayload = objectMapper.writeValueAsString(event);
+            kafkaTemplate.send(TOPIC, commentId.toString(), jsonPayload);
+        } catch (Exception e) {
+            log.error("Lỗi serialize Kafka event [{}]: {}", type, e.getMessage());
+        }
     }
 
-    public void publishCommentUpdated(CommentResponse response) {
-        kafkaTemplate.send("comment-events", "COMMENT_UPDATED", response);
+    public void publishCommentCreated(UUID commentId, Object payload) {
+        sendEvent(commentId, "COMMENT_CREATED", payload);
+    }
+    public void publishCommentUpdated(UUID commentId, Object payload) {
+        sendEvent(commentId, "COMMENT_UPDATED", payload);
+    }
+    public void publishCommentDeleted(UUID commentId, Object payload) {
+        sendEvent(commentId, "COMMENT_DELETED", payload);
     }
 
-    public void publishCommentDeleted(UUID commentId) {
-        kafkaTemplate.send(TOPIC, "COMMENT_DELETED", commentId);
-    }
 }
+
+record CommentEvent(String type, Object payload) {}

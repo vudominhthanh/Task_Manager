@@ -4,10 +4,12 @@ server:
 spring:
   application:
     name: report-service
+  config:
+    import: optional:configserver:http://localhost:8888
   datasource:
-    url: jdbc:postgresql://localhost:5432/Task_Manager
+    url: jdbc:postgresql://localhost:5432/reports
     username: postgres
-    password: secretpassword
+    password: 123456
     driver-class-name: org.postgresql.Driver
   jpa:
     hibernate:
@@ -16,7 +18,12 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-
+  kafka:
+    bootstrap-servers: localhost:9092
+    consumer:
+      group-id: reports
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
 eureka:
   client:
     service-url:
