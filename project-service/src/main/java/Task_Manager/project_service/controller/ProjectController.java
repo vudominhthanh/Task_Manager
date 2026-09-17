@@ -72,8 +72,10 @@ public class ProjectController {
     @PutMapping("/{id}")
     public ResponseEntity<ProjectResponse> updateProject(@PathVariable UUID id, @Valid @RequestBody ProjectRequest projectRequest, Authentication authentication) {
         UUID currentUserId = getCurrentUserId(authentication);
+
         boolean isSystemAdmin = authentication.getAuthorities().stream()
-                .anyMatch(auth -> auth.getAuthority().equals("SYS_AD"));
+                .anyMatch(auth -> "SYS_AD".equalsIgnoreCase(auth.getAuthority())
+                        || "ROLE_SYS_AD".equalsIgnoreCase(auth.getAuthority()));
 
         ProjectResponse projectResponse = projectService.updateProject(id, projectRequest, currentUserId, isSystemAdmin);
         return new ResponseEntity<>(projectResponse,HttpStatus.OK);
@@ -82,9 +84,15 @@ public class ProjectController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteProject(@PathVariable UUID id, Authentication authentication) {
         UUID currentUserId = getCurrentUserId(authentication);
-        boolean isSystemAdmin = authentication.getAuthorities().stream()
-                .anyMatch(auth -> auth.getAuthority().equals("SYS_AD"));
 
+        if (authentication != null && authentication.getAuthorities() != null) {
+            authentication.getAuthorities().forEach(auth -> {
+                System.out.println("   --> Authority: [" + auth.getAuthority() + "] (Class: " + auth.getClass().getSimpleName() + ")");
+            });
+        }
+        boolean isSystemAdmin = authentication.getAuthorities().stream()
+                .anyMatch(auth -> "SYS_AD".equalsIgnoreCase(auth.getAuthority())
+                        || "ROLE_SYS_AD".equalsIgnoreCase(auth.getAuthority()));
         projectService.deleteProject(id, currentUserId, isSystemAdmin);
         return ResponseEntity.noContent().build();
     }
@@ -94,4 +102,12 @@ public class ProjectController {
         List<ProjectResponse> projects = projectService.getProjectsByIds(projectIds);
         return ResponseEntity.ok(projects);
     }
+
+    @GetMapping("/{projectId}/is-admin")
+    public ResponseEntity<Boolean> isProjectAdmin(
+            @PathVariable UUID projectId,
+            @RequestParam UUID userId) {
+        return ResponseEntity.ok(projectService.isProjectAdmin(projectId, userId));
+    }
+
 }

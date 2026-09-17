@@ -15,6 +15,7 @@ public class AttachmentResponse {
     private Long fileSize;
     private String s3Key;
     private String projectId;
+    private String fileUrl;
     private LocalDateTime createdAt;
 
     private String userName;

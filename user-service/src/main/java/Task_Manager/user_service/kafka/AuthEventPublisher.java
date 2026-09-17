@@ -6,6 +6,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
 
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -32,6 +33,15 @@ public class AuthEventPublisher {
 
     public void publishUserLoggedIn(UUID userId, Object payload) {
         sendEvent("USER_LOGGED", userId, payload);
+    }
+
+    public void publishUserUpdated(UUID userId, Object payload) {
+        sendEvent("USER_UPDATED", userId, payload);
+    }
+
+    public void publishOtpCreated(Map<String, Object> payload) {
+        sendEvent("REGISTRATION_OTP", UUID.randomUUID(), payload);
+//        log.info("📢 [KAFKA] Đã gửi sự kiện phát sinh OTP sang topic: {}", TOPIC);
     }
 }
 record AuthEvent(String type, Object payload) {}

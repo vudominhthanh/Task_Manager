@@ -1,5 +1,6 @@
 package Task_Manager.activity_service.entity;
 
+import Task_Manager.common_lib.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -7,7 +8,6 @@ import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 import java.time.LocalDateTime;
 import java.util.Map;
-import java.util.UUID;
 
 @Entity
 @Table(name = "activities")
@@ -16,11 +16,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Activity {
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
-
+public class Activity extends BaseEntity {
     @Column(name = "target_type")
     private String targetType;
 
@@ -54,8 +50,4 @@ public class Activity {
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "payload_details", columnDefinition = "jsonb")
     private Map<String, Object> payloadDetails;
-
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
 }

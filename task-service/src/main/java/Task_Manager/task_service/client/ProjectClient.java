@@ -12,10 +12,9 @@ public interface ProjectClient {
     @GetMapping("/api/projects/{projectId}/exists")
     boolean existsById(@PathVariable("projectId") UUID projectId);
 
-    @GetMapping("/api/projects/{projectId}/check-admin")
-    boolean isProjectAdmin(@PathVariable("projectId") UUID projectId,
-                           @RequestParam("userId") UUID userId);
-
     @PostMapping("/api/projects/batch")
     List<ProjectDto> getProjectsByIds(@RequestBody List<UUID> projectIds);
+
+    @GetMapping("/api/projects/{projectId}/is-admin")
+    boolean isProjectAdmin(@PathVariable("projectId") UUID projectId, @RequestParam("userId") UUID userId);
 }

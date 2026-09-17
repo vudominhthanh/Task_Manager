@@ -14,6 +14,7 @@ import java.util.UUID;
 @RequiredArgsConstructor
 @Slf4j
 public class ReportConsumer {
+
     private final ReportService reportService;
     private final ObjectMapper objectMapper;
 
@@ -24,28 +25,25 @@ public class ReportConsumer {
             String type = message.path("type").asText("");
             JsonNode payLoad = message.path("payload");
 
-            if ("PROJECT_CREATED".equals(type)) {
-                String projectIdStr = null;
-                if (payLoad.has("project") && payLoad.path("project").has("id")) {
-                    projectIdStr = payLoad.path("project").path("id").asText(null);
-                } else if (payLoad.has("projectId")) {
-                    projectIdStr = payLoad.path("projectId").asText(null);
-                }
-
-                if (projectIdStr != null && !projectIdStr.isEmpty()) {
-                    reportService.initProjectStatistic(UUID.fromString(projectIdStr));
-                    log.info("ReportConsumer đã khởi tạo thống kê cho project: {}", projectIdStr);
-                }
+            String projectIdStr = null;
+            if (payLoad.has("project") && payLoad.path("project").hasNonNull("id")) {
+                projectIdStr = payLoad.path("project").path("id").asText(null);
+            } else if (payLoad.hasNonNull("projectId")) {
+                projectIdStr = payLoad.path("projectId").asText(null);
             }
-            else if ("PROJECT_DELETED".equals(type)) {
-                String projectIdStr = payLoad.path("projectId").asText(null);
-                if (projectIdStr != null && !projectIdStr.isEmpty()) {
-                    reportService.deleteProjectStatistic(UUID.fromString(projectIdStr));
-                    log.info("ReportConsumer đã xóa thống kê project: {}", projectIdStr);
-                }
+
+            if (projectIdStr == null || projectIdStr.isEmpty()) return;
+            UUID projectId = UUID.fromString(projectIdStr);
+
+            if ("PROJECT_CREATED".equalsIgnoreCase(type) || "CREATED".equalsIgnoreCase(type)) {
+                reportService.initProjectStatistic(projectId);
+                log.info("[ReportConsumer] Đã khởi tạo thống kê cho project: {}", projectId);
+            } else if ("PROJECT_DELETED".equalsIgnoreCase(type) || "DELETED".equalsIgnoreCase(type)) {
+                reportService.deleteProjectStatistic(projectId);
+                log.info("[ReportConsumer] Đã xóa thống kê project: {}", projectId);
             }
         } catch (Exception e) {
-            log.error("Lỗi xử lý project event tại ReportConsumer: {}", e.getMessage());
+            log.error("[ReportConsumer] Lỗi xử lý project event: {}", e.getMessage());
         }
     }
 
@@ -55,10 +53,9 @@ public class ReportConsumer {
             JsonNode message = objectMapper.readTree(payloadString);
             String type = message.path("type").asText("");
             JsonNode payLoad = message.path("payload");
-
             JsonNode taskNode = payLoad.path("task");
 
-            // Lấy projectId an toàn từ taskNode hoặc payload
+            // Trích xuất projectId từ mọi vị trí khả dĩ
             String projectIdStr = null;
             if (!taskNode.isMissingNode() && taskNode.hasNonNull("projectId")) {
                 projectIdStr = taskNode.path("projectId").asText(null);
@@ -66,38 +63,26 @@ public class ReportConsumer {
                 projectIdStr = payLoad.path("projectId").asText(null);
             }
 
-            if (projectIdStr != null && !projectIdStr.isEmpty()) {
-                UUID projectId = UUID.fromString(projectIdStr);
-
-                String newStatus = "TO_DO";
-                if (!taskNode.isMissingNode() && taskNode.hasNonNull("status")) {
-                    newStatus = taskNode.path("status").asText("TO_DO");
-                } else if (payLoad.hasNonNull("status")) {
-                    newStatus = payLoad.path("status").asText("TO_DO");
-                }
-
-                log.info("ReportConsumer nhận task event [{}], projectId: {}, status: {}", type, projectId, newStatus);
-
-                switch (type) {
-                    case "TASK_CREATED":
-                    case "SUB_TASK_CREATED":
-                        reportService.handleTaskStatusChange(projectId, null, newStatus, true);
-                        break;
-
-                    case "TASK_STATUS_UPDATED":
-                        String oldStatus = payLoad.hasNonNull("oldStatus") ? payLoad.path("oldStatus").asText(null) : "TO_DO";
-                        reportService.handleTaskStatusChange(projectId, oldStatus, newStatus, false);
-                        break;
-
-                    case "TASK_DELETED":
-                        reportService.handleTaskDeleted(projectId, newStatus);
-                        break;
-                }
-            } else {
-                log.warn("ReportConsumer bỏ qua task event do không tìm thấy projectId trong payload: {}", payloadString);
+            if (projectIdStr == null || projectIdStr.isEmpty()) {
+                log.warn("[ReportConsumer] Bỏ qua task event do thiếu projectId: {}", type);
+                return;
             }
+
+            UUID projectId = UUID.fromString(projectIdStr);
+            String normalizedType = type.toUpperCase();
+
+            // Đồng bộ mọi format event name
+            if (normalizedType.contains("CREATED") || normalizedType.contains("SUB_CREATED")) {
+                reportService.handleTaskStatusChange(projectId, null, "CREATED", true);
+            } else if (normalizedType.contains("STATUS") || normalizedType.contains("UPDATED")) {
+                reportService.handleTaskStatusChange(projectId, null, "UPDATED", false);
+            } else if (normalizedType.contains("DELETE")) {
+                reportService.handleTaskDeleted(projectId, "DELETED");
+            }
+
+            log.info("[ReportConsumer] Đã xử lý tính toán lại thống kê cho project: {} từ event {}", projectId, type);
         } catch (Exception e) {
-            log.error("Lỗi xử lý task event tại ReportConsumer: {}", e.getMessage(), e);
+            log.error("[ReportConsumer] Lỗi xử lý task event: {}", e.getMessage());
         }
     }
 }

@@ -1,20 +1,8 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useEvent, emitEvent, EVENTS } from "../../hooks/useEventBus";
-import {
-  X,
-  User,
-  Calendar,
-  GitMerge,
-  Send,
-  Loader2,
-  LayoutGrid,
-  Trash2,
-  CheckSquare,
-  Square,
-  Plus,
-  FileText,
-  Download,
-} from "lucide-react";
+import apiClient from "../../utils/apiClient";
+import { X, User, Calendar, GitMerge, Send, Loader2, LayoutGrid, Trash2, CheckSquare, Square, Plus, FileText, Download, ChevronDown, Check, } from "lucide-react";
+import toast from "react-hot-toast";
 
 const timeAgo = (dateString) => {
   if (!dateString) return "";
@@ -41,6 +29,7 @@ const avatarColors = [
   "bg-purple-500",
   "bg-indigo-600",
 ];
+
 const getAvatarColor = (str) => {
   if (!str) return "bg-blue-500";
   let hash = 0;
@@ -50,62 +39,100 @@ const getAvatarColor = (str) => {
   return avatarColors[Math.abs(hash) % avatarColors.length];
 };
 
+const priorityLabels = {
+  LOW: { label: "Low", bg: "bg-green-50 text-green-700 border-green-200" },
+  MEDIUM: {
+    label: "Medium",
+    bg: "bg-orange-50 text-orange-700 border-orange-200",
+  },
+  HIGH: { label: "High", bg: "bg-red-50 text-red-600 border-red-200" },
+  URGENT: {
+    label: "Urgent",
+    bg: "bg-red-100 text-red-700 border-red-300 font-bold",
+  },
+  DEFAULT: {
+    label: "Medium",
+    bg: "bg-orange-50 text-orange-700 border-orange-200",
+  },
+};
+
+const statusLabels = {
+  TO_DO: { label: "To Do", bg: "bg-gray-100 text-gray-700 border-gray-200" },
+  IN_PROGRESS: {
+    label: "In Progress",
+    bg: "bg-blue-50 text-blue-700 border-blue-200",
+  },
+  REVIEW: {
+    label: "Review",
+    bg: "bg-amber-50 text-amber-700 border-amber-200",
+  },
+  DONE: {
+    label: "Done",
+    bg: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  },
+  COMPLETED: {
+    label: "Done",
+    bg: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  },
+  DEFAULT: { label: "To Do", bg: "bg-gray-100 text-gray-700 border-gray-200" },
+};
+
 const ProjectRight = ({ taskId, onClose }) => {
   const [activeTab, setActiveTab] = useState("details");
-
   const [task, setTask] = useState(null);
   const [attachments, setAttachments] = useState([]);
   const [comments, setComments] = useState([]);
   const [activities, setActivities] = useState([]);
   const [members, setMembers] = useState([]);
-
   const [loading, setLoading] = useState(true);
   const [newComment, setNewComment] = useState("");
   const [isPostingComment, setIsPostingComment] = useState(false);
-
   const [newSubTaskTitle, setNewSubTaskTitle] = useState("");
   const [isAddingSubTask, setIsAddingSubTask] = useState(false);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
-
   const [replyingToId, setReplyingToId] = useState(null);
   const [replyContent, setReplyContent] = useState("");
-
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editContent, setEditContent] = useState("");
-
   const [expandedReplies, setExpandedReplies] = useState({});
+  const [openDropdown, setOpenDropdown] = useState(null);
+  const containerRef = useRef(null);
 
-  const getToken = () => localStorage.getItem("accessToken") || "";
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (containerRef.current && !containerRef.current.contains(e.target)) {
+        setOpenDropdown(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
-  const fetchMembers = useCallback(async (projId) => {
-    const targetProjectId = projId || task?.projectId;
-    if (!targetProjectId) return;
-    try {
-      const headers = { Authorization: `Bearer ${getToken()}` };
-      const memRes = await fetch(
-        `http://localhost:8083/api/projects/${targetProjectId}/members`,
-        { headers },
-      );
-      if (memRes.ok) setMembers(await memRes.json());
-    } catch (err) {
-      console.error("Lỗi fetch members:", err);
-    }
-  }, [task?.projectId]);
+  const fetchMembers = useCallback(
+    async (projId) => {
+      const targetProjectId = projId || task?.projectId;
+      if (!targetProjectId) return;
+      try {
+        const memRes = await apiClient.get(
+          `http://localhost:8083/api/projects/${targetProjectId}/members`
+        );
+        setMembers(memRes.data || []);
+      } catch (err) {
+        console.error("Lỗi fetch members:", err);
+      }
+    },
+    [task?.projectId],
+  );
 
   const fetchTaskDetails = useCallback(async () => {
     if (!taskId) return;
     try {
-      const headers = { Authorization: `Bearer ${getToken()}` };
-      const taskRes = await fetch(`http://localhost:8085/api/tasks/${taskId}`, {
-        headers,
-      });
-      if (taskRes.ok) {
-        const taskData = await taskRes.json();
-        setTask(taskData);
-        if (taskData.projectId) {
-          fetchMembers(taskData.projectId);
-        }
-      }
+      const taskRes = await apiClient.get(
+        `http://localhost:8085/api/tasks/${taskId}`
+      );
+      const taskData = taskRes.data;
+      setTask(taskData);
+      if (taskData?.projectId) fetchMembers(taskData.projectId);
     } catch (err) {
       console.error("Lỗi fetch task:", err);
     }
@@ -114,15 +141,10 @@ const ProjectRight = ({ taskId, onClose }) => {
   const fetchComments = useCallback(async () => {
     if (!taskId) return;
     try {
-      const headers = { Authorization: `Bearer ${getToken()}` };
-      const cmtRes = await fetch(
-        `http://localhost:8085/api/tasks/${taskId}/comments`,
-        { headers },
+      const cmtRes = await apiClient.get(
+        `http://localhost:8085/api/tasks/${taskId}/comments`
       );
-      if (cmtRes.ok) {
-        const cmtData = await cmtRes.json();
-        setComments(cmtData); // Giữ nguyên data chuẩn tree có replies từ Backend
-      }
+      setComments(cmtRes.data || []);
     } catch (err) {
       console.error("Lỗi fetch comments:", err);
     }
@@ -131,12 +153,10 @@ const ProjectRight = ({ taskId, onClose }) => {
   const fetchAttachments = useCallback(async () => {
     if (!taskId) return;
     try {
-      const headers = { Authorization: `Bearer ${getToken()}` };
-      const attachRes = await fetch(
-        `http://localhost:8085/api/tasks/${taskId}/attachments`,
-        { headers },
+      const attachRes = await apiClient.get(
+        `http://localhost:8085/api/tasks/${taskId}/attachments`
       );
-      if (attachRes.ok) setAttachments(await attachRes.json());
+      setAttachments(attachRes.data || []);
     } catch (err) {
       console.error("Lỗi fetch attachments:", err);
     }
@@ -145,18 +165,15 @@ const ProjectRight = ({ taskId, onClose }) => {
   const fetchActivities = useCallback(async () => {
     if (!taskId) return;
     try {
-      const headers = { Authorization: `Bearer ${getToken()}` };
-      const actRes = await fetch(
-        `http://localhost:8081/api/activities/task/${taskId}`,
-        { headers },
+      const actRes = await apiClient.get(
+        `http://localhost:8081/api/activities/task/${taskId}`
       );
-      if (actRes.ok) setActivities(await actRes.json());
+      setActivities(actRes.data || []);
     } catch (err) {
       console.error("Lỗi fetch activities:", err);
     }
   }, [taskId]);
 
-  // Load ban đầu khi mở taskId
   useEffect(() => {
     if (!taskId) return;
     setLoading(true);
@@ -175,16 +192,34 @@ const ProjectRight = ({ taskId, onClose }) => {
   ]);
 
   useEvent(EVENTS.TASK, (eventData) => {
-    const targetId = eventData?.payload?.task?.id || eventData?.payload?.id || eventData?.payload?.taskId;
-    if (!targetId || targetId === taskId) {
+    const p = eventData?.payload || {};
+    const incomingTaskId = p.task?.id || p.id || p.taskId || eventData?.taskId;
+    const incomingParentId = p.task?.parentTaskId || p.parentTaskId;
+    const isCurrentTask =
+      incomingTaskId && String(incomingTaskId) === String(taskId);
+    const isChildSubTask =
+      incomingParentId && String(incomingParentId) === String(taskId);
+    const isExistingSubTask = task?.subTasks?.some(
+      (st) => String(st.id) === String(incomingTaskId),
+    );
+    if (
+      !incomingTaskId ||
+      isCurrentTask ||
+      isChildSubTask ||
+      isExistingSubTask
+    ) {
       fetchTaskDetails();
       fetchActivities();
     }
   });
 
-  useEvent(EVENTS.COMMENT, () => {
-    fetchComments();
-    fetchActivities();
+  useEvent(EVENTS.COMMENT, (eventData) => {
+    const p = eventData?.payload || {};
+    const incomingId = p.taskId || p.comment?.taskId || eventData?.taskId;
+    if (!incomingId || !taskId || String(incomingId) === String(taskId)) {
+      fetchComments();
+      fetchActivities();
+    }
   });
 
   useEvent(EVENTS.ATTACHMENT, () => {
@@ -192,45 +227,105 @@ const ProjectRight = ({ taskId, onClose }) => {
     fetchActivities();
   });
 
-  useEvent(EVENTS.MEMBER, () => {
-    fetchMembers();
+  useEvent(EVENTS.MEMBER, (eventData) => {
+    const pId = eventData?.payload?.projectId || eventData?.projectId;
+    if (!pId || !task?.projectId || String(pId) === String(task.projectId)) {
+      fetchMembers(task?.projectId);
+    }
   });
 
-  const handleUpdateTaskField = async (field, value) => {
-  try {
-    const headers = {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${getToken()}`,
-    };
+  const handleViewAttachment = async (fileUrl, fileName, fileType = "") => {
+    if (!fileUrl) return;
+    const isImage =
+      fileType.includes("image") ||
+      /\.(png|jpe?g|gif|webp|svg)$/i.test(fileName);
+    const isPdf = fileType.includes("pdf") || /\.pdf$/i.test(fileName);
 
-    const endpoint =
-      field === "status"
+    if (!isImage && !isPdf) {
+      toast.error(
+        `Định dạng "${fileName}" không hỗ trợ xem trực tiếp. Hãy bấm tải xuống!`,
+      );
+      return;
+    }
+
+    const fullUrl = fileUrl.startsWith("http")
+      ? fileUrl
+      : `http://localhost:8085${fileUrl}`;
+    const newTab = window.open("about:blank", "_blank");
+    if (newTab) {
+      newTab.document.write(
+        '<div style="font-family: sans-serif; display: flex; height: 100vh; justify-content: center; align-items: center; color: #666;">Đang tải tệp xem trước...</div>',
+      );
+    }
+
+    try {
+      const res = await apiClient.get(fullUrl, { responseType: "blob" });
+      const typedBlob = new Blob([res.data], {
+        type: fileType || (isPdf ? "application/pdf" : "image/png"),
+      });
+      const blobUrl = window.URL.createObjectURL(typedBlob);
+      if (newTab) newTab.location.href = blobUrl;
+    } catch (err) {
+      console.error("Lỗi xem file:", err);
+      if (newTab) newTab.close();
+      toast.error("Không thể xem tệp này trực tiếp!");
+    }
+  };
+
+  const handleDownloadAttachment = async (fileUrl, fileName) => {
+    if (!fileUrl) return;
+    const fullUrl = fileUrl.startsWith("http")
+      ? fileUrl
+      : `http://localhost:8085${fileUrl}`;
+    const downloadUrl = fullUrl.includes("?download=true")
+      ? fullUrl
+      : `${fullUrl}?download=true`;
+
+    const tid = toast.loading("Đang chuẩn bị tệp...");
+    try {
+      const res = await apiClient.get(downloadUrl, { responseType: "blob" });
+      const blobUrl = window.URL.createObjectURL(res.data);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = fileName || "attachment";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+      toast.success("Tải xuống hoàn tất", { id: tid });
+    } catch (err) {
+      console.error("Lỗi download:", err);
+      toast.error("Tải tệp về máy thất bại!", { id: tid });
+    }
+  };
+
+  const handleUpdateTaskField = async (field, value) => {
+    try {
+      const isStatus = field === "status";
+      const endpoint = isStatus
         ? `http://localhost:8085/api/tasks/${taskId}/status`
         : `http://localhost:8085/api/tasks/${taskId}`;
+      const bodyData = isStatus ? { status: value } : { [field]: value };
 
-    const bodyData =
-      field === "status" ? { status: value } : { [field]: value };
+      const res = isStatus
+        ? await apiClient.patch(endpoint, bodyData)
+        : await apiClient.put(endpoint, bodyData);
 
-    const res = await fetch(endpoint, {
-      method: field === "status" ? "PATCH" : "PUT",
-      headers,
-      body: JSON.stringify(bodyData),
-    });
-
-    if (res.ok) {
-      const updatedTask = await res.json();
+      const updatedTask = res.data;
       setTask((prev) => ({ ...prev, ...updatedTask }));
       fetchActivities();
-
-      emitEvent(EVENTS.TASK, { taskId, projectId: task?.projectId, task: updatedTask });
-    } else {
-      const errorData = await res.json().catch(() => ({}));
-      alert(errorData.message || "Cập nhật thất bại!");
+      emitEvent(EVENTS.TASK, {
+        taskId,
+        projectId: task?.projectId,
+        task: updatedTask,
+      });
+      toast.success("Đã cập nhật công việc!");
+    } catch (error) {
+      console.error("Lỗi cập nhật task:", error);
+      const msg = error.response?.data?.message || error.message || "Cập nhật thất bại!";
+      toast.error(msg);
     }
-  } catch (error) {
-    console.error("Lỗi cập nhật task:", error);
-  }
-};
+  };
 
   const handleAddComment = async (e, parentId = null) => {
     if (e) e.preventDefault();
@@ -239,36 +334,29 @@ const ProjectRight = ({ taskId, onClose }) => {
 
     setIsPostingComment(true);
     try {
-      const res = await fetch(
+      await apiClient.post(
         `http://localhost:8085/api/tasks/${taskId}/comments`,
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${getToken()}`,
-          },
-          body: JSON.stringify({
-            content: textToSend,
-            parentCommentId: parentId,
-          }),
-        },
+          content: textToSend,
+          parentCommentId: parentId,
+        }
       );
 
-      if (res.ok) {
-        fetchComments();
-        fetchActivities();
-        if (parentId) {
-          setReplyingToId(null);
-          setReplyContent("");
-          setExpandedReplies((prev) => ({ ...prev, [parentId]: true })); 
-        emitEvent(EVENTS.COMMENT, { taskId }); // 🔥
-        emitEvent(EVENTS.TASK, { taskId, projectId: task?.projectId });
-        } else {
-          setNewComment("");
-        }
+      fetchComments();
+      fetchActivities();
+      if (parentId) {
+        setReplyingToId(null);
+        setReplyContent("");
+        setExpandedReplies((prev) => ({ ...prev, [parentId]: true }));
+      } else {
+        setNewComment("");
       }
+      emitEvent(EVENTS.COMMENT, { taskId });
+      emitEvent(EVENTS.TASK, { taskId, projectId: task?.projectId });
     } catch (error) {
       console.error("Lỗi khi thêm bình luận:", error);
+      const msg = error.response?.data?.message || error.message || "Không thể gửi bình luận!";
+      toast.error(msg);
     } finally {
       setIsPostingComment(false);
     }
@@ -277,146 +365,130 @@ const ProjectRight = ({ taskId, onClose }) => {
   const handleUpdateComment = async (commentId) => {
     if (!editContent.trim()) return;
     try {
-      const res = await fetch(
+      await apiClient.put(
         `http://localhost:8085/api/tasks/${taskId}/comments/${commentId}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${getToken()}`,
-          },
-          body: JSON.stringify({ content: editContent }),
-        },
+        { content: editContent }
       );
 
-      if (res.ok) {
-        setEditingCommentId(null);
-        setEditContent("");
-        fetchComments();
-        emitEvent(EVENTS.COMMENT, { taskId }); 
-        emitEvent(EVENTS.TASK, { taskId, projectId: task?.projectId });
-      } else {
-        alert("Không thể chỉnh sửa bình luận này.");
-      }
+      setEditingCommentId(null);
+      setEditContent("");
+      fetchComments();
+      emitEvent(EVENTS.COMMENT, { taskId });
+      emitEvent(EVENTS.TASK, { taskId, projectId: task?.projectId });
     } catch (error) {
-      console.error("Lỗi khi sửa bình luận:", error);
+      console.error("Lỗi sửa bình luận:", error);
+      const msg =
+        error.response?.data?.message ||
+        error.message ||
+        "Bạn không có quyền sửa bình luận này!";
+      toast.error(msg);
     }
   };
 
   const handleDeleteComment = async (commentId) => {
     if (!window.confirm("Bạn có chắc muốn xóa bình luận này không?")) return;
     try {
-      const res = await fetch(
-        `http://localhost:8085/api/tasks/${taskId}/comments/${commentId}`,
-        {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${getToken()}` },
-        },
+      await apiClient.delete(
+        `http://localhost:8085/api/tasks/${taskId}/comments/${commentId}`
       );
-      if (res.ok || res.status === 204) {
-        fetchComments();
-        fetchActivities();
-        emitEvent(EVENTS.COMMENT, { taskId }); 
-        emitEvent(EVENTS.TASK, { taskId, projectId: task?.projectId });
-      }
+
+      fetchComments();
+      fetchActivities();
+      emitEvent(EVENTS.COMMENT, { taskId });
+      emitEvent(EVENTS.TASK, { taskId, projectId: task?.projectId });
+      toast.success("Đã xóa bình luận!");
     } catch (error) {
       console.error("Lỗi xóa bình luận:", error);
+      const msg =
+        error.response?.data?.message ||
+        error.message ||
+        "Bạn không có quyền xóa bình luận này!";
+      toast.error(msg);
     }
   };
 
   const handleAddSubTask = async (e) => {
     e.preventDefault();
     if (!newSubTaskTitle.trim() || !taskId) return;
-
     try {
-      const res = await fetch(
+      await apiClient.post(
         `http://localhost:8085/api/tasks/${taskId}/sub-tasks`,
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${getToken()}`,
-          },
-          body: JSON.stringify({
-            title: newSubTaskTitle,
-            priority: "MEDIUM",
-            projectId: task.projectId,
-          }),
-        },
+          title: newSubTaskTitle,
+          priority: "MEDIUM",
+          projectId: task?.projectId,
+        }
       );
 
-     if (res.ok) {
       setNewSubTaskTitle("");
       setIsAddingSubTask(false);
       fetchTaskDetails();
       fetchActivities();
       emitEvent(EVENTS.TASK, { taskId, projectId: task?.projectId });
-    }
+      toast.success("Đã tạo việc con!");
     } catch (error) {
-      console.error("Lỗi khi thêm subtask:", error);
+      console.error("Lỗi thêm subtask:", error);
+      const msg = error.response?.data?.message || error.message || "Không thể tạo việc con!";
+      toast.error(msg);
     }
   };
 
   const handleToggleSubTask = async (subTaskId, currentStatus) => {
     const nextStatus = currentStatus === "DONE" ? "TO_DO" : "DONE";
     try {
-      const res = await fetch(
+      await apiClient.patch(
         `http://localhost:8085/api/tasks/${subTaskId}/status`,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${getToken()}`,
-          },
-          body: JSON.stringify({ status: nextStatus }),
-        },
+        { status: nextStatus }
       );
 
-      if (res.ok) {
-        fetchTaskDetails();
-        fetchActivities();
-        emitEvent(EVENTS.TASK, { taskId, projectId: task?.projectId }); 
-      }
+      fetchTaskDetails();
+      fetchActivities();
+      emitEvent(EVENTS.TASK, { taskId, projectId: task?.projectId });
     } catch (error) {
       console.error("Lỗi cập nhật subtask:", error);
+      const msg =
+        error.response?.data?.message ||
+        error.message ||
+        "Không thể cập nhật việc con!";
+      toast.error(msg);
     }
   };
 
   const handleDeleteSubTask = async (subTaskId) => {
     try {
-      const res = await fetch(`http://localhost:8085/api/tasks/${subTaskId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-
-      if (res.ok || res.status === 204) {
-        fetchTaskDetails();
-        fetchActivities();
-      }
+      await apiClient.delete(`http://localhost:8085/api/tasks/${subTaskId}`);
+      fetchTaskDetails();
+      fetchActivities();
+      toast.success("Đã xóa việc con!");
     } catch (error) {
       console.error("Lỗi xóa subtask:", error);
+      const msg =
+        error.response?.data?.message ||
+        error.message ||
+        "Không thể xóa việc con!";
+      toast.error(msg);
     }
   };
 
   const handleDeleteTask = async () => {
     if (!window.confirm("Bạn có chắc chắn muốn xóa công việc này không?"))
       return;
-
     try {
-      const res = await fetch(`http://localhost:8085/api/tasks/${taskId}`, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${getToken()}` },
+      await apiClient.delete(`http://localhost:8085/api/tasks/${taskId}`);
+      toast.success("Đã xóa công việc!");
+      emitEvent(EVENTS.TASK, {
+        taskId,
+        projectId: task?.projectId,
+        deleted: true,
       });
-
-      if (res.ok || res.status === 204) {
-        fetchTaskDetails();
-        fetchActivities();
-        emitEvent(EVENTS.TASK, { taskId, projectId: task?.projectId, deleted: true });
-      } else {
-        alert("Không thể xóa công việc này.");
-      }
+      if (onClose) onClose();
     } catch (error) {
-      console.error("Lỗi khi xóa task:", error);
+      console.error("Lỗi xóa task:", error);
+      const msg =
+        error.response?.data?.message ||
+        error.message ||
+        "Bạn không có quyền xóa công việc này!";
+      toast.error(msg);
     }
   };
 
@@ -426,26 +498,27 @@ const ProjectRight = ({ taskId, onClose }) => {
 
     const formData = new FormData();
     formData.append("file", file);
-
     setIsUploadingFile(true);
+    const tid = toast.loading(`Đang tải lên ${file.name}...`);
+
     try {
-      const res = await fetch(
+      await apiClient.post(
         `http://localhost:8085/api/tasks/${taskId}/attachments`,
+        formData,
         {
-          method: "POST",
-          headers: { Authorization: `Bearer ${getToken()}` },
-          body: formData,
-        },
+          headers: { "Content-Type": "multipart/form-data" },
+        }
       );
 
-      if (res.ok) {
-        fetchAttachments();
-        fetchActivities();
-        emitEvent(EVENTS.ATTACHMENT, { taskId }); 
-        emitEvent(EVENTS.TASK, { taskId, projectId: task?.projectId });
-      }
+      fetchAttachments();
+      fetchActivities();
+      emitEvent(EVENTS.ATTACHMENT, { taskId });
+      emitEvent(EVENTS.TASK, { taskId, projectId: task?.projectId });
+      toast.success("Đã tải tệp lên", { id: tid });
     } catch (error) {
       console.error("Lỗi upload file:", error);
+      const msg = error.response?.data?.message || error.message || "Không thể tải tệp lên!";
+      toast.error(msg, { id: tid });
     } finally {
       setIsUploadingFile(false);
       e.target.value = "";
@@ -454,22 +527,22 @@ const ProjectRight = ({ taskId, onClose }) => {
 
   const handleDeleteAttachment = async (attId) => {
     try {
-      const res = await fetch(
-        `http://localhost:8085/api/tasks/${taskId}/attachments/${attId}`,
-        {
-          method: "DELETE",
-          headers: { Authorization: `Bearer ${getToken()}` },
-        },
+      await apiClient.delete(
+        `http://localhost:8085/api/tasks/${taskId}/attachments/${attId}`
       );
 
-      if (res.ok) {
-        fetchAttachments();
-        fetchActivities();
-        emitEvent(EVENTS.ATTACHMENT, { taskId }); 
-        emitEvent(EVENTS.TASK, { taskId, projectId: task?.projectId });
-      }
+      fetchAttachments();
+      fetchActivities();
+      emitEvent(EVENTS.ATTACHMENT, { taskId });
+      emitEvent(EVENTS.TASK, { taskId, projectId: task?.projectId });
+      toast.success("Đã xóa tệp đính kèm!");
     } catch (error) {
       console.error("Lỗi xóa file đính kèm:", error);
+      const msg =
+        error.response?.data?.message ||
+        error.message ||
+        "Bạn không có quyền xóa tệp này!";
+      toast.error(msg);
     }
   };
 
@@ -480,7 +553,7 @@ const ProjectRight = ({ taskId, onClose }) => {
   const progressPercent =
     subTasksList.length > 0
       ? Math.round((completedSubTasksCount / subTasksList.length) * 100)
-      : task?.status === "DONE"
+      : task?.status === "DONE" || task?.status === "COMPLETED"
         ? 100
         : task?.status === "IN_PROGRESS"
           ? 50
@@ -502,8 +575,19 @@ const ProjectRight = ({ taskId, onClose }) => {
     );
   }
 
+  const currentAssignee = members.find(
+    (m) => String(m.userId || m.id) === String(task?.assigneeId),
+  );
+  const currentPriorityConfig =
+    priorityLabels[task?.priority] || priorityLabels.DEFAULT;
+  const currentStatusConfig =
+    statusLabels[task?.status] || statusLabels.DEFAULT;
+
   return (
-    <div className="flex flex-col h-full w-full relative bg-white">
+    <div
+      className="flex flex-col h-full w-full relative bg-white font-sans"
+      ref={containerRef}
+    >
       {loading && (
         <div className="absolute inset-0 bg-white/60 backdrop-blur-[1px] z-20 flex items-center justify-center">
           <Loader2 className="animate-spin text-indigo-600" size={28} />
@@ -525,47 +609,98 @@ const ProjectRight = ({ taskId, onClose }) => {
         </div>
 
         {task && (
-          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2 relative z-30">
             <div className="flex items-center gap-2">
-              {/* Đổi Priority */}
-              <select
-                value={task.priority || "MEDIUM"}
-                onChange={(e) =>
-                  handleUpdateTaskField("priority", e.target.value)
-                }
-                className={`px-2.5 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider outline-none cursor-pointer border border-transparent ${
-                  task.priority === "URGENT"
-                    ? "bg-red-100 text-red-700"
-                    : task.priority === "HIGH"
-                      ? "bg-red-50 text-red-600"
-                      : task.priority === "MEDIUM"
-                        ? "bg-orange-50 text-orange-600"
-                        : "bg-green-50 text-green-600"
-                }`}
-              >
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="URGENT">Urgent</option>
-              </select>
+              <div className="relative">
+                <div
+                  onClick={() =>
+                    setOpenDropdown(
+                      openDropdown === "priority" ? null : "priority",
+                    )
+                  }
+                  className={`px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wider border flex items-center gap-2 cursor-pointer select-none transition-all shadow-2xs ${currentPriorityConfig.bg}`}
+                >
+                  <span>{currentPriorityConfig.label}</span>
+                  <ChevronDown
+                    size={12}
+                    className={`transition-transform duration-200 ${openDropdown === "priority" ? "rotate-180" : ""}`}
+                  />
+                </div>
+                {openDropdown === "priority" && (
+                  <div className="absolute left-0 top-full mt-1.5 w-36 bg-white border border-gray-100 rounded-xl shadow-xl py-1 z-50 animate-in fade-in zoom-in-95 duration-150">
+                    {["LOW", "MEDIUM", "HIGH", "URGENT"].map((p) => {
+                      const isSelected = (task.priority || "MEDIUM") === p;
+                      const pItem = priorityLabels[p] || priorityLabels.DEFAULT;
+                      return (
+                        <div
+                          key={p}
+                          onClick={() => {
+                            handleUpdateTaskField("priority", p);
+                            setOpenDropdown(null);
+                          }}
+                          className={`px-3 py-2 text-[12px] cursor-pointer flex items-center justify-between transition-colors ${
+                            isSelected
+                              ? "bg-indigo-50 text-indigo-600 font-semibold"
+                              : "text-gray-700 hover:bg-gray-50 font-medium"
+                          }`}
+                        >
+                          <span>{pItem.label}</span>
+                          {isSelected && (
+                            <Check size={13} className="text-indigo-600" />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
 
-              {/* Đổi Status */}
-              <select
-                value={task.status || "TO_DO"}
-                onChange={(e) =>
-                  handleUpdateTaskField("status", e.target.value)
-                }
-                className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-md text-[12px] font-semibold outline-none cursor-pointer border border-indigo-100"
-              >
-                <option value="TO_DO">To Do</option>
-                <option value="IN_PROGRESS">In Progress</option>
-                <option value="DONE">Done</option>
-              </select>
+              <div className="relative">
+                <div
+                  onClick={() =>
+                    setOpenDropdown(openDropdown === "status" ? null : "status")
+                  }
+                  className={`px-3 py-1.5 rounded-lg text-[12px] font-semibold border flex items-center gap-2 cursor-pointer select-none transition-all shadow-2xs ${currentStatusConfig.bg}`}
+                >
+                  <span>{currentStatusConfig.label}</span>
+                  <ChevronDown
+                    size={13}
+                    className={`transition-transform duration-200 ${openDropdown === "status" ? "rotate-180" : ""}`}
+                  />
+                </div>
+                {openDropdown === "status" && (
+                  <div className="absolute left-0 top-full mt-1.5 w-38 bg-white border border-gray-100 rounded-xl shadow-xl py-1 z-50 animate-in fade-in zoom-in-95 duration-150">
+                    {["TO_DO", "IN_PROGRESS", "REVIEW", "DONE"].map((s) => {
+                      const isSelected = (task.status || "TO_DO") === s;
+                      const sItem = statusLabels[s] || statusLabels.DEFAULT;
+                      return (
+                        <div
+                          key={s}
+                          onClick={() => {
+                            handleUpdateTaskField("status", s);
+                            setOpenDropdown(null);
+                          }}
+                          className={`px-3 py-2 text-[12px] cursor-pointer flex items-center justify-between transition-colors ${
+                            isSelected
+                              ? "bg-indigo-50 text-indigo-600 font-semibold"
+                              : "text-gray-700 hover:bg-gray-50 font-medium"
+                          }`}
+                        >
+                          <span>{sItem.label}</span>
+                          {isSelected && (
+                            <Check size={13} className="text-indigo-600" />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
 
             <button
               onClick={handleDeleteTask}
-              className="flex items-center gap-1 bg-red-50 hover:bg-red-100 text-red-600 px-2.5 py-1 rounded-md text-[12px] font-semibold transition-colors cursor-pointer"
+              className="flex items-center gap-1 bg-red-50 hover:bg-red-100 text-red-600 px-2.5 py-1.5 rounded-lg text-[12px] font-semibold transition-colors cursor-pointer"
               title="Xóa công việc"
             >
               <Trash2 size={14} /> Xóa
@@ -577,21 +712,13 @@ const ProjectRight = ({ taskId, onClose }) => {
         <div className="flex border-b border-gray-200 gap-5">
           <button
             onClick={() => setActiveTab("details")}
-            className={`text-[13px] font-medium pb-2.5 transition-colors relative cursor-pointer ${
-              activeTab === "details"
-                ? "text-indigo-600 font-bold border-b-2 border-indigo-600"
-                : "text-gray-500 hover:text-gray-800"
-            }`}
+            className={`text-[13px] font-medium pb-2.5 transition-colors relative cursor-pointer ${activeTab === "details" ? "text-indigo-600 font-bold border-b-2 border-indigo-600" : "text-gray-500 hover:text-gray-800"}`}
           >
             Chi tiết
           </button>
           <button
             onClick={() => setActiveTab("comments")}
-            className={`text-[13px] font-medium pb-2.5 flex items-center gap-1.5 transition-colors relative cursor-pointer ${
-              activeTab === "comments"
-                ? "text-indigo-600 font-bold border-b-2 border-indigo-600"
-                : "text-gray-500 hover:text-gray-800"
-            }`}
+            className={`text-[13px] font-medium pb-2.5 flex items-center gap-1.5 transition-colors relative cursor-pointer ${activeTab === "comments" ? "text-indigo-600 font-bold border-b-2 border-indigo-600" : "text-gray-500 hover:text-gray-800"}`}
           >
             Bình luận{" "}
             <span className="bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded-full text-[10px] font-bold">
@@ -600,18 +727,13 @@ const ProjectRight = ({ taskId, onClose }) => {
           </button>
           <button
             onClick={() => setActiveTab("activity")}
-            className={`text-[13px] font-medium pb-2.5 transition-colors relative cursor-pointer ${
-              activeTab === "activity"
-                ? "text-indigo-600 font-bold border-b-2 border-indigo-600"
-                : "text-gray-500 hover:text-gray-800"
-            }`}
+            className={`text-[13px] font-medium pb-2.5 transition-colors relative cursor-pointer ${activeTab === "activity" ? "text-indigo-600 font-bold border-b-2 border-indigo-600" : "text-gray-500 hover:text-gray-800"}`}
           >
             Hoạt động
           </button>
         </div>
       </div>
 
-      {/* Nội dung Tab */}
       <div className="flex-1 overflow-y-auto p-5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden min-h-0 flex flex-col">
         {/* TAB 1: CHI TIẾT */}
         {activeTab === "details" && task && (
@@ -626,24 +748,66 @@ const ProjectRight = ({ taskId, onClose }) => {
             </div>
 
             <div className="flex flex-col gap-3.5 mb-7">
-              <div className="grid grid-cols-[100px_1fr] items-center text-[12px]">
+              <div className="grid grid-cols-[100px_1fr] items-center text-[12px] relative">
                 <span className="text-gray-500 flex items-center gap-2">
                   <User size={14} /> Phụ trách
                 </span>
-                <select
-                  value={task.assigneeId || ""}
-                  onChange={(e) =>
-                    handleUpdateTaskField("assigneeId", e.target.value)
-                  }
-                  className="bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 text-[12px] font-medium text-gray-800 outline-none cursor-pointer"
-                >
-                  <option value="">-- Chưa giao --</option>
-                  {members.map((m) => (
-                    <option key={m.userId || m.id} value={m.userId || m.id}>
-                      {m.fullName || m.username || m.email}
-                    </option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <div
+                    onClick={() =>
+                      setOpenDropdown(
+                        openDropdown === "assignee" ? null : "assignee",
+                      )
+                    }
+                    className="w-full max-w-[220px] bg-white border border-gray-200 rounded-xl px-3 py-2 text-[12px] font-medium text-gray-800 flex items-center justify-between cursor-pointer hover:border-gray-300 shadow-2xs transition-all"
+                  >
+                    <span className="truncate">
+                      {currentAssignee
+                        ? currentAssignee.fullName ||
+                          currentAssignee.username ||
+                          currentAssignee.email
+                        : "-- Chưa giao --"}
+                    </span>
+                    <ChevronDown
+                      size={13}
+                      className={`text-gray-400 shrink-0 transition-transform ${openDropdown === "assignee" ? "rotate-180" : ""}`}
+                    />
+                  </div>
+                  {openDropdown === "assignee" && (
+                    <div className="absolute left-0 top-full mt-1.5 w-full min-w-[220px] bg-white border border-gray-100 rounded-xl shadow-xl py-1 z-50 max-h-48 overflow-y-auto">
+                      <div
+                        onClick={() => {
+                          handleUpdateTaskField("assigneeId", null);
+                          setOpenDropdown(null);
+                        }}
+                        className="px-3 py-2 text-[12px] text-gray-500 hover:bg-gray-50 cursor-pointer italic"
+                      >
+                        -- Chưa giao --
+                      </div>
+                      {members.map((m) => {
+                        const mId = m.userId || m.id;
+                        const isSelected =
+                          String(task.assigneeId) === String(mId);
+                        const mName = m.fullName || m.username || m.email;
+                        return (
+                          <div
+                            key={mId}
+                            onClick={() => {
+                              handleUpdateTaskField("assigneeId", mId);
+                              setOpenDropdown(null);
+                            }}
+                            className={`px-3 py-2 text-[12px] cursor-pointer flex items-center justify-between transition-colors ${isSelected ? "bg-indigo-50 text-indigo-600 font-semibold" : "text-gray-700 hover:bg-gray-50 font-medium"}`}
+                          >
+                            <span className="truncate">{mName}</span>
+                            {isSelected && (
+                              <Check size={13} className="text-indigo-600" />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-[100px_1fr] items-center text-[12px]">
@@ -670,7 +834,7 @@ const ProjectRight = ({ taskId, onClose }) => {
                   onChange={(e) =>
                     handleUpdateTaskField("dueDate", e.target.value)
                   }
-                  className="bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 text-[12px] font-medium text-gray-800 outline-none cursor-pointer w-fit"
+                  className="bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1.5 text-[12px] font-medium text-gray-800 outline-none cursor-pointer w-fit focus:border-indigo-500"
                 />
               </div>
 
@@ -717,7 +881,7 @@ const ProjectRight = ({ taskId, onClose }) => {
                         onClick={() => handleToggleSubTask(st.id, st.status)}
                         className="flex items-center gap-2 flex-1 cursor-pointer"
                       >
-                        {st.status === "DONE" ? (
+                        {st.status === "DONE" || st.status === "COMPLETED" ? (
                           <CheckSquare
                             size={16}
                             className="text-indigo-600 shrink-0"
@@ -730,7 +894,7 @@ const ProjectRight = ({ taskId, onClose }) => {
                         )}
                         <span
                           className={
-                            st.status === "DONE"
+                            st.status === "DONE" || st.status === "COMPLETED"
                               ? "text-gray-400 line-through"
                               : "text-gray-700 font-medium"
                           }
@@ -810,30 +974,55 @@ const ProjectRight = ({ taskId, onClose }) => {
                     className="flex justify-between items-center p-2.5 rounded-lg border border-gray-100 bg-gray-50/30 mb-2 group"
                   >
                     <div className="flex items-center gap-3 overflow-hidden">
-                      <div className="p-2 bg-indigo-50 text-indigo-500 rounded-md shrink-0">
+                      <div
+                        onClick={() =>
+                          handleViewAttachment(
+                            att.fileUrl,
+                            att.fileName,
+                            att.fileType,
+                          )
+                        }
+                        className="p-2 bg-indigo-50 text-indigo-500 rounded-md shrink-0 cursor-pointer hover:bg-indigo-100 transition-colors"
+                        title="Xem tệp"
+                      >
                         <FileText size={16} />
                       </div>
                       <div className="flex flex-col truncate">
-                        <span className="text-[12px] font-semibold text-gray-800 truncate">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleViewAttachment(
+                              att.fileUrl,
+                              att.fileName,
+                              att.fileType,
+                            )
+                          }
+                          className="text-left text-[12px] font-semibold text-gray-800 hover:text-indigo-600 truncate cursor-pointer transition-colors"
+                          title="Bấm để xem trực tiếp"
+                        >
                           {att.fileName || "Tài liệu"}
-                        </span>
+                        </button>
                         <span className="text-[10px] text-gray-400">
                           {timeAgo(att.createdAt)}
                         </span>
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
-                      <a
-                        href={att.fileUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-gray-400 hover:text-indigo-600 p-1"
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleDownloadAttachment(att.fileUrl, att.fileName)
+                        }
+                        className="text-gray-400 hover:text-indigo-600 p-1 cursor-pointer"
+                        title="Tải về máy"
                       >
                         <Download size={15} />
-                      </a>
+                      </button>
                       <button
+                        type="button"
                         onClick={() => handleDeleteAttachment(att.id)}
                         className="text-gray-400 hover:text-red-500 p-1 cursor-pointer"
+                        title="Xóa tệp"
                       >
                         <Trash2 size={15} />
                       </button>
@@ -845,7 +1034,7 @@ const ProjectRight = ({ taskId, onClose }) => {
           </div>
         )}
 
-        {/* TAB 2: BÌNH LUẬN PHÂN CẤP */}
+        {/* TAB 2: BÌNH LUẬN */}
         {activeTab === "comments" && (
           <div className="flex flex-col h-full justify-between">
             <div className="flex flex-col gap-4 mb-4 overflow-y-auto pr-1">
@@ -863,10 +1052,8 @@ const ProjectRight = ({ taskId, onClose }) => {
                     c.updateDate &&
                     c.createdAt &&
                     new Date(c.updateDate) > new Date(c.createdAt);
-
                   return (
                     <div key={c.id} className="flex flex-col gap-2">
-                      {/* COMMENT CHA */}
                       <div className="flex gap-2.5 bg-gray-50/80 p-3 rounded-xl border border-gray-100 group">
                         <div
                           className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-[11px] font-bold shrink-0 shadow-sm ${getAvatarColor(c.userId)}`}
@@ -883,7 +1070,6 @@ const ProjectRight = ({ taskId, onClose }) => {
                               {timeAgo(c.createdAt)}
                             </span>
                           </div>
-
                           {isEditingParent ? (
                             <div className="flex flex-col gap-2 mt-1">
                               <textarea
@@ -918,7 +1104,6 @@ const ProjectRight = ({ taskId, onClose }) => {
                               )}
                             </div>
                           )}
-
                           <div className="flex items-center gap-3 mt-2 text-[11px] text-gray-500 font-medium">
                             <button
                               onClick={() => {
@@ -948,7 +1133,6 @@ const ProjectRight = ({ taskId, onClose }) => {
                         </div>
                       </div>
 
-                      {/* NÚT ẨN / HIỆN COMMENT CON */}
                       {hasReplies && (
                         <div className="ml-9">
                           <button
@@ -968,7 +1152,6 @@ const ProjectRight = ({ taskId, onClose }) => {
                         </div>
                       )}
 
-                      {/* KHUNG TRẢ LỜI */}
                       {isReplying && (
                         <div className="ml-9 flex items-center gap-2 mt-1">
                           <input
@@ -994,7 +1177,6 @@ const ProjectRight = ({ taskId, onClose }) => {
                         </div>
                       )}
 
-                      {/* COMMENT CON */}
                       {isExpanded && hasReplies && (
                         <div className="ml-8 pl-3 border-l-2 border-indigo-100 flex flex-col gap-2.5 mt-1">
                           {c.replies.map((r) => {
@@ -1003,7 +1185,6 @@ const ProjectRight = ({ taskId, onClose }) => {
                               r.updateDate &&
                               r.createdAt &&
                               new Date(r.updateDate) > new Date(r.createdAt);
-
                             return (
                               <div
                                 key={r.id}
@@ -1024,7 +1205,6 @@ const ProjectRight = ({ taskId, onClose }) => {
                                       {timeAgo(r.createdAt)}
                                     </span>
                                   </div>
-
                                   {isEditingChild ? (
                                     <div className="flex flex-col gap-1.5 mt-1">
                                       <textarea
@@ -1065,7 +1245,6 @@ const ProjectRight = ({ taskId, onClose }) => {
                                       )}
                                     </div>
                                   )}
-
                                   <div className="flex items-center gap-3 mt-1.5 text-[10.5px] text-gray-500 font-medium">
                                     <button
                                       onClick={() => {
@@ -1095,7 +1274,6 @@ const ProjectRight = ({ taskId, onClose }) => {
               )}
             </div>
 
-            {/* Form gửi bình luận gốc */}
             <form
               onSubmit={(e) => handleAddComment(e, null)}
               className="mt-auto pt-2 border-t border-gray-100 flex items-center gap-2"

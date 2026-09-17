@@ -1,18 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useEvent, EVENTS } from "../../hooks/useEventBus";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Loader2,
-  CheckCircle2,
-  Calendar,
-  FolderGit2,
-  X,
-  Clock,
-  ArrowLeft,
-  ArrowRight,
-  AlertCircle,
-} from "lucide-react";
+import apiClient from "../../utils/apiClient";
+import { ChevronLeft, ChevronRight, Loader2, CheckCircle2, Calendar, FolderGit2, X, Clock, ArrowLeft, ArrowRight, AlertCircle, } from "lucide-react";
 
 const GlobalCalendar = () => {
   const [tasks, setTasks] = useState([]);
@@ -22,8 +11,6 @@ const GlobalCalendar = () => {
 
   const [selectedTaskIndex, setSelectedTaskIndex] = useState(null);
   const [isAnimating, setIsAnimating] = useState(false);
-
-  const getToken = () => localStorage.getItem("accessToken") || "";
 
   const projectColors = [
     "bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100",
@@ -46,38 +33,31 @@ const GlobalCalendar = () => {
 
   const fetchMyCalendarTasks = useCallback(async () => {
     try {
-      const token = getToken();
-      
-      const projIdsRes = await fetch(`http://localhost:8083/api/projects/my-project-ids`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!projIdsRes.ok) return;
-      const projectIds = await projIdsRes.json();
+      const projIdsRes = await apiClient.get(
+        `http://localhost:8083/api/projects/my-project-ids`,
+      );
+      const projectIds = projIdsRes.data;
 
       const projMap = {};
       for (const pId of projectIds) {
         try {
-          const pRes = await fetch(`http://localhost:8083/api/projects/${pId}`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (pRes.ok) {
-            const pData = await pRes.json();
-            projMap[pId] = pData.name || "Dự án không tên";
-          }
+          const pRes = await apiClient.get(
+            `http://localhost:8083/api/projects/${pId}`,
+          );
+          const pData = pRes.data;
+          projMap[pId] = pData.name || "Dự án không tên";
         } catch (e) {
           projMap[pId] = "Dự án";
         }
       }
       setProjectsMap(projMap);
 
-      const taskRes = await fetch(`http://localhost:8085/api/tasks/assignee/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      
-      if (taskRes.ok) {
-        const myTasks = await taskRes.json();
-        setTasks(myTasks);
-      }
+      const taskRes = await apiClient.get(
+        `http://localhost:8085/api/tasks/assignee/me`,
+      );
+
+      const myTasks = taskRes.data;
+      setTasks(myTasks);
     } catch (error) {
       console.error("Lỗi đồng bộ lịch tổng hợp cá nhân:", error);
     } finally {
@@ -90,7 +70,6 @@ const GlobalCalendar = () => {
     fetchMyCalendarTasks();
   }, [fetchMyCalendarTasks]);
 
-  // Nhận Realtime: Task đổi ngày, thêm mới, xóa -> Lịch tự cập nhật
   useEvent(EVENTS.TASK, fetchMyCalendarTasks);
   useEvent(EVENTS.PROJECT, fetchMyCalendarTasks);
 
@@ -104,11 +83,15 @@ const GlobalCalendar = () => {
 
   const handlePrevMonth = () =>
     triggerMonthChange(() =>
-      setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))
+      setCurrentDate(
+        (prev) => new Date(prev.getFullYear(), prev.getMonth() - 1, 1),
+      ),
     );
   const handleNextMonth = () =>
     triggerMonthChange(() =>
-      setCurrentDate((prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))
+      setCurrentDate(
+        (prev) => new Date(prev.getFullYear(), prev.getMonth() + 1, 1),
+      ),
     );
   const handleToday = () =>
     triggerMonthChange(() => setCurrentDate(new Date()));
@@ -117,8 +100,18 @@ const GlobalCalendar = () => {
   const month = currentDate.getMonth();
 
   const monthNames = [
-    "Tháng 1", "Tháng 2", "Tháng 3", "Tháng 4", "Tháng 5", "Tháng 6",
-    "Tháng 7", "Tháng 8", "Tháng 9", "Tháng 10", "Tháng 11", "Tháng 12",
+    "Tháng 1",
+    "Tháng 2",
+    "Tháng 3",
+    "Tháng 4",
+    "Tháng 5",
+    "Tháng 6",
+    "Tháng 7",
+    "Tháng 8",
+    "Tháng 9",
+    "Tháng 10",
+    "Tháng 11",
+    "Tháng 12",
   ];
 
   const firstDayOfMonth = new Date(year, month, 1);
@@ -198,15 +191,23 @@ const GlobalCalendar = () => {
 
         if (task.dueDate) {
           const dParts = task.dueDate.split("-");
-          dueObj = new Date(parseInt(dParts[0], 10), parseInt(dParts[1], 10) - 1, parseInt(dParts[2], 10));
+          dueObj = new Date(
+            parseInt(dParts[0], 10),
+            parseInt(dParts[1], 10) - 1,
+            parseInt(dParts[2], 10),
+          );
           dueObj.setHours(0, 0, 0, 0);
         }
         if (task.startDate) {
           const sParts = task.startDate.split("-");
-          startObj = new Date(parseInt(sParts[0], 10), parseInt(sParts[1], 10) - 1, parseInt(sParts[2], 10));
+          startObj = new Date(
+            parseInt(sParts[0], 10),
+            parseInt(sParts[1], 10) - 1,
+            parseInt(sParts[2], 10),
+          );
           startObj.setHours(0, 0, 0, 0);
         } else if (dueObj) {
-          startObj = new Date(dueObj); 
+          startObj = new Date(dueObj);
         }
 
         const isDone = task.status === "DONE" || task.status === "COMPLETED";
@@ -218,9 +219,15 @@ const GlobalCalendar = () => {
           effectiveDueObj = new Date(today);
         }
 
-        return { ...task, startObj, dueObj: effectiveDueObj, isOverdue, isDone };
+        return {
+          ...task,
+          startObj,
+          dueObj: effectiveDueObj,
+          isOverdue,
+          isDone,
+        };
       })
-      .filter((t) => t.startObj && t.dueObj); 
+      .filter((t) => t.startObj && t.dueObj);
 
     processedTasks.sort((a, b) => {
       return (
@@ -230,8 +237,8 @@ const GlobalCalendar = () => {
       );
     });
 
-    const allocationRows = {}; 
-    const occupiedSlots = {};  
+    const allocationRows = {};
+    const occupiedSlots = {};
 
     processedTasks.forEach((task) => {
       let row = 0;
@@ -299,10 +306,14 @@ const GlobalCalendar = () => {
       )}
 
       {/* Header điều hướng Tháng / Năm */}
-      <div className="flex justify-between items-center mb-6 shrink-0 animate-page-slide stagger-1" style={{ animationFillMode: 'forwards' }}>
+      <div
+        className="flex justify-between items-center mb-6 shrink-0 animate-page-slide stagger-1"
+        style={{ animationFillMode: "forwards" }}
+      >
         <div>
           <h2 className="text-[18px] font-bold text-gray-900 flex items-center gap-2">
-            <Calendar className="text-indigo-600" size={20} /> Lịch Tổng Hợp Dự Án
+            <Calendar className="text-indigo-600" size={20} /> Lịch Tổng Hợp Dự
+            Án
           </h2>
           <p className="text-[12px] text-gray-500 mt-0.5">
             Toàn bộ công việc của bạn trên các hệ thống dự án
@@ -338,7 +349,10 @@ const GlobalCalendar = () => {
       </div>
 
       {/* Lưới lịch */}
-      <div className="flex-1 flex flex-col border border-gray-200 rounded-xl overflow-x-auto shadow-xs animate-page-slide stagger-2" style={{ animationFillMode: 'forwards' }}>
+      <div
+        className="flex-1 flex flex-col border border-gray-200 rounded-xl overflow-x-auto shadow-xs animate-page-slide stagger-2"
+        style={{ animationFillMode: "forwards" }}
+      >
         <div className="min-w-[800px] flex-1 flex flex-col">
           <div className="grid grid-cols-7 bg-gray-50 border-b border-gray-200">
             {daysHeader.map((d) => (
@@ -364,47 +378,54 @@ const GlobalCalendar = () => {
                 year: cellYear,
                 isCurrentMonth,
               } = cell;
-              
+
               const isToday = isTodayCheck(dayNumber, cellMonth, cellYear);
-              
+
               const cellDateObj = new Date(cellYear, cellMonth, dayNumber);
               cellDateObj.setHours(0, 0, 0, 0);
               const cellTime = cellDateObj.getTime();
 
               const todaysTasks = validTasks.filter(
-                (t) => cellTime >= t.startObj.getTime() && cellTime <= t.dueObj.getTime()
+                (t) =>
+                  cellTime >= t.startObj.getTime() &&
+                  cellTime <= t.dueObj.getTime(),
               );
 
-              const maxRow = todaysTasks.length > 0 
-                ? Math.max(...todaysTasks.map(t => taskRows[t.id])) 
-                : -1;
+              const maxRow =
+                todaysTasks.length > 0
+                  ? Math.max(...todaysTasks.map((t) => taskRows[t.id]))
+                  : -1;
 
               const rowsToRender = [];
               for (let r = 0; r <= maxRow; r++) {
                 const task = todaysTasks.find((t) => taskRows[t.id] === r);
-                
+
                 if (task) {
                   const projectName = projectsMap[task.projectId] || "Dự án";
-                  const originalIndex = tasks.findIndex((t) => t.id === task.id);
-                  
+                  const originalIndex = tasks.findIndex(
+                    (t) => t.id === task.id,
+                  );
+
                   // Ưu tiên style màu đỏ nếu task bị quá hạn và chưa hoàn thành
                   const displayStyle = task.isDone
                     ? "bg-gray-100 border-gray-200 text-gray-400 opacity-75"
                     : task.isOverdue
-                    ? "bg-red-50 text-red-700 border-red-200 hover:bg-red-100 shadow-2xs"
-                    : getProjectStyle(task.projectId);
-                  
+                      ? "bg-red-50 text-red-700 border-red-200 hover:bg-red-100 shadow-2xs"
+                      : getProjectStyle(task.projectId);
+
                   const isActualStart = cellTime === task.startObj.getTime();
                   const isActualEnd = cellTime === task.dueObj.getTime();
-                  const isStartOfWeek = cellDateObj.getDay() === 1; 
-                  
-                  let shapeClass = "border-y "; 
-                  
-                  if (isActualStart) shapeClass += "rounded-l-[4px] border-l ml-1 ";
-                  else shapeClass += "border-l-0 ml-0 "; 
+                  const isStartOfWeek = cellDateObj.getDay() === 1;
 
-                  if (isActualEnd) shapeClass += "rounded-r-[4px] border-r mr-1 ";
-                  else shapeClass += "border-r-0 mr-0 "; 
+                  let shapeClass = "border-y ";
+
+                  if (isActualStart)
+                    shapeClass += "rounded-l-[4px] border-l ml-1 ";
+                  else shapeClass += "border-l-0 ml-0 ";
+
+                  if (isActualEnd)
+                    shapeClass += "rounded-r-[4px] border-r mr-1 ";
+                  else shapeClass += "border-r-0 mr-0 ";
 
                   const showText = isActualStart || isStartOfWeek;
 
@@ -416,23 +437,39 @@ const GlobalCalendar = () => {
                       title={`[${projectName}] ${task.title} ${task.isOverdue ? "(Quá hạn)" : ""}`}
                     >
                       {showText && (
-                        <div className={`flex items-center gap-1.5 px-1.5 overflow-hidden whitespace-nowrap w-full ${task.isDone ? "line-through decoration-gray-300" : ""}`}>
+                        <div
+                          className={`flex items-center gap-1.5 px-1.5 overflow-hidden whitespace-nowrap w-full ${task.isDone ? "line-through decoration-gray-300" : ""}`}
+                        >
                           {task.isDone ? (
-                            <CheckCircle2 size={10} className="shrink-0 text-gray-400" />
+                            <CheckCircle2
+                              size={10}
+                              className="shrink-0 text-gray-400"
+                            />
                           ) : task.isOverdue ? (
-                            <AlertCircle size={10} className="shrink-0 text-red-500 animate-pulse" />
+                            <AlertCircle
+                              size={10}
+                              className="shrink-0 text-red-500 animate-pulse"
+                            />
                           ) : (
-                            <FolderGit2 size={10} className="shrink-0 opacity-70" />
+                            <FolderGit2
+                              size={10}
+                              className="shrink-0 opacity-70"
+                            />
                           )}
                           <span className="text-[10.5px] font-semibold truncate leading-none mt-[1px]">
                             {task.title}
                           </span>
                         </div>
                       )}
-                    </div>
+                    </div>,
                   );
                 } else {
-                  rowsToRender.push(<div key={`empty-${r}`} className="h-[22px] mb-[2px]"></div>);
+                  rowsToRender.push(
+                    <div
+                      key={`empty-${r}`}
+                      className="h-[22px] mb-[2px]"
+                    ></div>,
+                  );
                 }
               }
 
@@ -451,8 +488,8 @@ const GlobalCalendar = () => {
                         isToday
                           ? "bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-200"
                           : isCurrentMonth
-                          ? "text-gray-700"
-                          : "text-gray-400"
+                            ? "text-gray-700"
+                            : "text-gray-400"
                       }`}
                     >
                       {dayNumber}
@@ -487,7 +524,9 @@ const GlobalCalendar = () => {
               onClick={handleNextTask}
               disabled={selectedTaskIndex === tasks.length - 1}
               className={`absolute right-3 md:right-4 top-1/2 -translate-y-1/2 p-2 rounded-full bg-white shadow-md border border-gray-200 text-gray-600 hover:bg-gray-50 transition-all active:scale-90 z-10 cursor-pointer ${
-                selectedTaskIndex === tasks.length - 1 ? "opacity-30 cursor-not-allowed" : ""
+                selectedTaskIndex === tasks.length - 1
+                  ? "opacity-30 cursor-not-allowed"
+                  : ""
               }`}
             >
               <ArrowRight size={16} />
@@ -522,11 +561,14 @@ const GlobalCalendar = () => {
                     Task {selectedTaskIndex + 1} / {tasks.length}
                   </span>
                 </div>
-                <h3 className={`text-[16px] font-bold leading-snug ${
-                   selectedTask.status === "DONE" || selectedTask.status === "COMPLETED" 
-                   ? "text-gray-400 line-through" 
-                   : "text-gray-900"
-                }`}>
+                <h3
+                  className={`text-[16px] font-bold leading-snug ${
+                    selectedTask.status === "DONE" ||
+                    selectedTask.status === "COMPLETED"
+                      ? "text-gray-400 line-through"
+                      : "text-gray-900"
+                  }`}
+                >
                   {selectedTask.title}
                 </h3>
                 <p className="text-[13px] text-gray-500 mt-1.5 whitespace-pre-line max-h-32 overflow-y-auto leading-relaxed">
@@ -545,7 +587,10 @@ const GlobalCalendar = () => {
                 <div className="flex items-center gap-2 text-gray-600">
                   <Clock size={14} className="text-red-500 shrink-0" />
                   <span className="truncate">
-                    Hạn chót: <b className="text-red-600">{selectedTask.dueDate || "Không có"}</b>
+                    Hạn chót:{" "}
+                    <b className="text-red-600">
+                      {selectedTask.dueDate || "Không có"}
+                    </b>
                   </span>
                 </div>
               </div>

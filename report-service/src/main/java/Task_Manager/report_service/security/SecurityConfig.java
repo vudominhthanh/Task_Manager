@@ -1,5 +1,8 @@
 package Task_Manager.report_service.security;
 
+import Task_Manager.common_lib.exception.GlobalExceptionHandler;
+import Task_Manager.common_lib.security.JwtAccessDeniedHandler;
+import Task_Manager.common_lib.security.JwtAuthenticationEntryPoint;
 import Task_Manager.common_lib.security.JwtValidationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -18,9 +21,13 @@ import java.util.List;
 public class SecurityConfig {
 
     private final JwtValidationFilter jwtValidationFilter;
+    private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
+    private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
 
-    public  SecurityConfig(JwtValidationFilter jwtValidationFilter) {
+    public  SecurityConfig(JwtValidationFilter jwtValidationFilter, JwtAccessDeniedHandler jwtAccessDeniedHandler, JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint) {
         this.jwtValidationFilter = jwtValidationFilter;
+        this.jwtAccessDeniedHandler = jwtAccessDeniedHandler;
+        this.jwtAuthenticationEntryPoint = jwtAuthenticationEntryPoint;
     }
 
     @Bean
@@ -40,7 +47,10 @@ public class SecurityConfig {
                     corsConfiguration.setMaxAge(3600L);
                     return corsConfiguration;
                 }))
-
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(jwtAuthenticationEntryPoint)
+                        .accessDeniedHandler(jwtAccessDeniedHandler)
+                )
                 .csrf(AbstractHttpConfigurer::disable)
 
                 .authorizeHttpRequests(auth -> auth

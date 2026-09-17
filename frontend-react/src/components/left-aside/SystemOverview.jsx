@@ -1,24 +1,15 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useEvent, EVENTS } from "../../hooks/useEventBus";
-import {
-  Briefcase,
-  CheckCircle,
-  AlertCircle,
-  Clock,
-  Star,
-  ChevronRight,
-  TrendingUp,
-  TrendingDown,
-  CheckSquare,
-  MessageSquare,
-} from "lucide-react";
+import apiClient from "../../utils/apiClient";
+import { Briefcase, CheckCircle, AlertCircle, Clock, Star, ChevronRight, TrendingUp, TrendingDown, MessageSquare, Activity as ActivityIcon, Plus, Trash2, Edit2, LogIn, } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+import CreateProjectPage from "../function/CreateProjectPage";
 
 const SystemOverview = () => {
   const [stats, setStats] = useState({
-    activeProjects: { value: 0, trend: "0%" },
-    completedThisWeek: { value: 0, trend: "0%" },
-    overdueTasks: { value: 0, trend: "0%" },
+    activeProjects: { value: 0, trend: "Đang tham gia" },
+    completedThisWeek: { value: 0, trend: "7 ngày qua" },
+    overdueTasks: { value: 0, trend: "Cần xử lý" },
   });
 
   const [upcomingTasks, setUpcomingTasks] = useState([]);
@@ -27,69 +18,60 @@ const SystemOverview = () => {
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
+  const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false);
+
   const fetchDashboardData = useCallback(async () => {
-    const token = localStorage.getItem("accessToken");
-    const headers = {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-  };
-
     try {
-      const overviewRes = await fetch(
-        "http://localhost:8084/api/reports/overview/user",
-        { method: "GET", headers }
-      );
-      if (overviewRes.ok) {
-        const data = await overviewRes.json();
-        if (data.stats) setStats(data.stats);
-        if (data.quickProjects) setQuickProjects(data.quickProjects);
-        if (data.recentActivities) setRecentActivities(data.recentActivities);
-      }
+      const overviewRes = await apiClient.get("http://localhost:8084/api/reports/overview/user");
+      const overviewData = overviewRes.data || {};
 
-      const tasksRes = await fetch("http://localhost:8085/api/tasks/assignee/me", {
-        method: "GET",
-        headers,
+      if (overviewData.stats) setStats(overviewData.stats);
+      if (overviewData.quickProjects) setQuickProjects(overviewData.quickProjects);
+      if (overviewData.recentActivities) setRecentActivities(overviewData.recentActivities);
+
+      const tasksRes = await apiClient.get("http://localhost:8085/api/tasks/assignee/me");
+      const allMyTasks = Array.isArray(tasksRes.data) ? tasksRes.data : [];
+
+      const parseLocalDate = (dateStr) => {
+        if (!dateStr) return null;
+        const parts = dateStr.split("-");
+        if (parts.length < 3) return new Date(dateStr);
+        return new Date(
+          Number(parts[0]),
+          Number(parts[1]) - 1,
+          Number(parts[2]),
+        );
+      };
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const next7Days = new Date();
+      next7Days.setDate(today.getDate() + 7);
+      next7Days.setHours(23, 59, 59, 999);
+
+      const filtered = allMyTasks.filter((task) => {
+        const isDone = task.status === "DONE" || task.status === "COMPLETED";
+        if (isDone) return false;
+
+        let dueObj = parseLocalDate(task.dueDate);
+        let startObj = parseLocalDate(task.startDate) || dueObj;
+
+        if (!dueObj && !startObj) return false;
+        if (!dueObj) dueObj = new Date(startObj);
+        if (!startObj) startObj = new Date(dueObj);
+
+        dueObj.setHours(23, 59, 59, 999);
+        startObj.setHours(0, 0, 0, 0);
+
+        const isInNext7Days = startObj <= next7Days && dueObj >= today;
+        const isOverdue = dueObj < today;
+
+        return isInNext7Days || isOverdue;
       });
-      if (tasksRes.ok) {
-        const allMyTasks = await tasksRes.json();
-        console.log("Tất cả công việc của tôi:", allMyTasks);
 
-        const parseLocalDate = (dateStr) => {
-          if (!dateStr) return null;
-          const parts = dateStr.split("-");
-          if (parts.length < 3) return new Date(dateStr);
-          return new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
-        };
+      setUpcomingTasks(filtered);
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const next7Days = new Date();
-        next7Days.setDate(today.getDate() + 7);
-        next7Days.setHours(23, 59, 59, 999);
-
-        const filtered = allMyTasks.filter((task) => {
-          const isDone = task.status === "DONE" || task.status === "COMPLETED";
-          if (isDone) return false;
-
-          let dueObj = parseLocalDate(task.dueDate);
-          let startObj = parseLocalDate(task.startDate) || dueObj;
-
-          if (!dueObj && !startObj) return false;
-          if (!dueObj) dueObj = new Date(startObj);
-          if (!startObj) startObj = new Date(dueObj);
-
-          dueObj.setHours(23, 59, 59, 999);
-          startObj.setHours(0, 0, 0, 0);
-
-          const isInNext7Days = startObj <= next7Days && dueObj >= today;
-          const isOverdue = dueObj < today;
-
-          return isInNext7Days || isOverdue;
-        });
-
-        setUpcomingTasks(filtered);
-      }
     } catch (err) {
       console.error("Lỗi gọi API Dashboard:", err);
     } finally {
@@ -106,23 +88,39 @@ const SystemOverview = () => {
   useEvent(EVENTS.PROJECT, fetchDashboardData);
   useEvent(EVENTS.COMMENT, fetchDashboardData);
 
+  const getActionIcon = (actionType) => {
+    switch (actionType) {
+      case "TASK_STATUS_UPDATED":
+      case "status_update":
+        return <CheckCircle size={14} className="text-emerald-500" />;
+      case "COMMENT_CREATED":
+      case "comment":
+        return <MessageSquare size={14} className="text-blue-500" />;
+      case "TASK_CREATED":
+      case "PROJECT_CREATED":
+      case "SUB_TASK_CREATED":
+        return <Plus size={14} className="text-indigo-500" />;
+      case "TASK_DELETED":
+      case "PROJECT_DELETED":
+        return <Trash2 size={14} className="text-red-500" />;
+      case "TASK_UPDATED":
+      case "PROJECT_UPDATED":
+        return <Edit2 size={14} className="text-amber-500" />;
+      case "USER_LOGGED":
+        return <LogIn size={14} className="text-teal-600" />;
+      default:
+        return <ActivityIcon size={14} className="text-gray-400" />;
+    }
+  };
 
   return (
     <div className="p-6 bg-[#F9FAFB] w-full min-h-full font-sans overflow-y-auto text-gray-800">
       <style>{`
         @keyframes pageSlideUp {
-          0% {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0);
-          }
+          0% { opacity: 0; transform: translateY(20px); }
+          100% { opacity: 1; transform: translateY(0); }
         }
-        .animate-page-slide {
-          animation: pageSlideUp 0.4s ease-out forwards;
-        }
+        .animate-page-slide { animation: pageSlideUp 0.4s ease-out forwards; }
         .stagger-1 { animation-delay: 0.05s; }
         .stagger-2 { animation-delay: 0.1s; }
         .stagger-3 { animation-delay: 0.15s; }
@@ -161,12 +159,12 @@ const SystemOverview = () => {
               {loading ? (
                 <span className="inline-block w-12 h-8 bg-gray-200 animate-pulse rounded"></span>
               ) : (
-                stats.activeProjects.value
+                (stats.activeProjects?.value ?? 0)
               )}
             </h2>
-            <div className="flex items-center gap-1.5 text-[12px] text-emerald-600 font-medium">
-              <TrendingUp size={14} className="animate-bounce" />{" "}
-              {stats.activeProjects.trend}
+            <div className="flex items-center gap-1.5 text-[12px] text-indigo-600 font-medium">
+              <TrendingUp size={14} />{" "}
+              {stats.activeProjects?.trend || "Đang tham gia"}
             </div>
           </div>
 
@@ -183,12 +181,12 @@ const SystemOverview = () => {
               {loading ? (
                 <span className="inline-block w-12 h-8 bg-gray-200 animate-pulse rounded"></span>
               ) : (
-                stats.completedThisWeek.value
+                (stats.completedThisWeek?.value ?? 0)
               )}
             </h2>
             <div className="flex items-center gap-1.5 text-[12px] text-emerald-600 font-medium">
-              <TrendingUp size={14} className="animate-bounce" />{" "}
-              {stats.completedThisWeek.trend}
+              <TrendingUp size={14} />{" "}
+              {stats.completedThisWeek?.trend || "7 ngày qua"}
             </div>
           </div>
 
@@ -205,21 +203,22 @@ const SystemOverview = () => {
               {loading ? (
                 <span className="inline-block w-12 h-8 bg-gray-200 animate-pulse rounded"></span>
               ) : (
-                stats.overdueTasks.value
+                (stats.overdueTasks?.value ?? 0)
               )}
             </h2>
-            <div className="flex items-center gap-1.5 text-[12px] text-emerald-600 font-medium">
-              <TrendingDown size={14} /> {stats.overdueTasks.trend}
+            <div className="flex items-center gap-1.5 text-[12px] text-red-500 font-medium">
+              <TrendingDown size={14} />{" "}
+              {stats.overdueTasks?.trend || "Cần xử lý"}
             </div>
           </div>
         </div>
 
-        {/* --- KHU VỰC 2: GRID CHÍNH (Chia tỷ lệ 60/40) --- */}
+        {/* --- KHU VỰC 2: GRID CHÍNH --- */}
         <div
           className="grid grid-cols-1 lg:grid-cols-5 gap-6 animate-page-slide stagger-3 opacity-0"
           style={{ animationFillMode: "forwards" }}
         >
-          {/* CỘT TRÁI (Span 3/5): Công việc */}
+          {/* CỘT TRÁI (Span 3/5): Công việc 7 ngày tới */}
           <div className="lg:col-span-3 flex flex-col gap-6">
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm flex flex-col flex-1">
               <div className="p-4 border-b border-gray-50 flex justify-between items-center bg-gray-50/50 rounded-t-xl">
@@ -250,8 +249,12 @@ const SystemOverview = () => {
                 ) : (
                   upcomingTasks.map((task) => {
                     const targetProjectId = task.projectId || task.project;
-                    const matchedProject = quickProjects.find(p => String(p.id || p.projectId) === String(targetProjectId));
-                    const projectName = task.projectName || matchedProject?.name || "Dự án";
+                    const matchedProject = quickProjects.find(
+                      (p) =>
+                        String(p.id || p.projectId) === String(targetProjectId),
+                    );
+                    const projectName =
+                      task.projectName || matchedProject?.name || "Dự án";
 
                     return (
                       <div
@@ -287,7 +290,8 @@ const SystemOverview = () => {
                               {projectName}
                             </span>
                             <span className="flex items-center gap-1 text-orange-600 font-semibold">
-                              <Clock size={12} /> {task.dueDate}
+                              <Clock size={12} />{" "}
+                              {task.dueDate || "Chưa có hạn"}
                             </span>
                           </div>
                         </div>
@@ -316,60 +320,71 @@ const SystemOverview = () => {
               </div>
 
               <div className="p-5 flex flex-col gap-5">
-                {quickProjects.map((project) => {
-                  const projId = project.id || project.projectId;
-                  const projName = project.name || "Dự án chưa đặt tên";
-                  const progressVal =
-                    project.progress !== undefined ? project.progress : 0;
+                {quickProjects.length === 0 ? (
+                  <div className="text-center py-4 text-xs text-gray-400">
+                    Chưa có dự án nào tham gia
+                  </div>
+                ) : (
+                  quickProjects.map((project) => {
+                    const projId = project.id || project.projectId;
+                    const projName = project.name || "Dự án chưa đặt tên";
+                    // Fallback đọc cả completionRate và progress
+                    const progressVal =
+                      project.progress !== undefined
+                        ? project.progress
+                        : project.completionRate !== undefined
+                          ? Number(project.completionRate)
+                          : 0;
 
-                  return (
-                    <div
-                      key={projId}
-                      onClick={() => projId && navigate(`/project/${projId}`)}
-                      className="group cursor-pointer"
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="flex flex-col gap-0.5">
-                          <div className="flex items-center gap-2">
-                            <h4 className="text-[13px] font-semibold text-gray-800 group-hover:text-indigo-600 transition-colors">
-                              {projName}
-                            </h4>
-                            {project.isStarred && (
-                              <Star
-                                size={12}
-                                className="text-orange-400 fill-orange-400 transition-transform duration-300 group-hover:rotate-45"
-                              />
-                            )}
+                    return (
+                      <div
+                        key={projId}
+                        onClick={() => projId && navigate(`/project/${projId}`)}
+                        className="group cursor-pointer"
+                      >
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex flex-col gap-0.5">
+                            <div className="flex items-center gap-2">
+                              <h4 className="text-[13px] font-semibold text-gray-800 group-hover:text-indigo-600 transition-colors">
+                                {projName}
+                              </h4>
+                              {project.isStarred && (
+                                <Star
+                                  size={12}
+                                  className="text-orange-400 fill-orange-400 transition-transform duration-300 group-hover:rotate-45"
+                                />
+                              )}
+                            </div>
+                            <p className="text-[11px] text-gray-400">
+                              {project.lastActive || "Hoạt động gần đây"}
+                            </p>
                           </div>
-                          <p className="text-[11px] text-gray-400">
-                            {project.lastActive || "Hoạt động gần đây"}
-                          </p>
+                          <span className="text-[12px] font-bold text-gray-700">
+                            {progressVal}%
+                          </span>
                         </div>
-                        <span className="text-[12px] font-bold text-gray-700">
-                          {progressVal}%
-                        </span>
-                      </div>
 
-                      <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                        <div
-                          className="h-1.5 rounded-full bg-indigo-500 transition-all duration-500 ease-out"
-                          style={{ width: `${progressVal}%` }}
-                        ></div>
+                        <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className="h-1.5 rounded-full bg-indigo-500 transition-all duration-500 ease-out"
+                            style={{ width: `${Math.min(progressVal, 100)}%` }}
+                          ></div>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })
+                )}
 
                 <button
-                  onClick={() => navigate("/projects/new")}
-                  className="w-full py-2 mt-2 border border-dashed border-gray-300 rounded-lg text-gray-500 text-[12px] font-medium hover:border-indigo-400 hover:text-indigo-600 hover:shadow-sm transition-all duration-200 bg-gray-50 hover:bg-indigo-50/30 active:scale-[0.98]"
+                  onClick={() => setIsCreateProjectOpen(true)}
+                  className="w-full py-2 mt-2 border border-dashed border-gray-300 rounded-lg text-gray-500 text-[12px] font-medium hover:border-indigo-400 hover:text-indigo-600 hover:shadow-sm transition-all duration-200 bg-gray-50 hover:bg-indigo-50/30 active:scale-[0.98] cursor-pointer"
                 >
                   + Thêm dự án mới
                 </button>
               </div>
             </div>
 
-            {/* Box MỚI: Hoạt động gần đây */}
+            {/* Box: Hoạt động mới nhất */}
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm flex flex-col flex-1">
               <div className="p-4 border-b border-gray-50 bg-gray-50/50 rounded-t-xl flex justify-between items-center">
                 <h3 className="text-[15px] font-bold text-gray-900">
@@ -377,40 +392,48 @@ const SystemOverview = () => {
                 </h3>
               </div>
 
-              <div className="p-4 flex flex-col gap-4">
-                {recentActivities.map((activity) => (
-                  <div
-                    key={activity.id}
-                    className="flex gap-3 items-start transition-all duration-200 hover:bg-gray-50/80 p-1.5 rounded-lg"
-                  >
-                    <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center shrink-0 text-gray-500 transition-colors duration-200 hover:bg-indigo-50 hover:text-indigo-600">
-                      {activity.type === "task" ? (
-                        <CheckCircle size={14} />
-                      ) : (
-                        <MessageSquare size={14} />
-                      )}
-                    </div>
-                    <div className="flex flex-col">
-                      <p className="text-[12px] text-gray-600 leading-snug">
-                        <span className="font-bold text-gray-900">
-                          {activity.user}
-                        </span>{" "}
-                        {activity.action}{" "}
-                        <span className="font-semibold text-gray-800">
-                          {activity.target}
-                        </span>
-                      </p>
-                      <span className="text-[10px] text-gray-400 mt-0.5">
-                        {activity.time}
-                      </span>
-                    </div>
+              <div className="p-4 flex flex-col gap-3">
+                {recentActivities.length === 0 ? (
+                  <div className="text-center py-4 text-xs text-gray-400">
+                    Chưa có hoạt động gần đây
                   </div>
-                ))}
+                ) : (
+                  recentActivities.map((activity, idx) => (
+                    <div
+                      key={activity.id || idx}
+                      className="flex gap-3 items-start transition-all duration-200 hover:bg-gray-50/80 p-1.5 rounded-lg"
+                    >
+                      <div className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center shrink-0 text-gray-500 transition-colors duration-200">
+                        {getActionIcon(activity.actionType || activity.type)}
+                      </div>
+                      <div className="flex flex-col min-w-0 flex-1">
+                        <p className="text-[12px] text-gray-600 leading-snug truncate">
+                          <span className="font-bold text-gray-900">
+                            {activity.user || activity.username || "Thành viên"}
+                          </span>{" "}
+                          {activity.action || "đã thao tác"}{" "}
+                          <span className="font-semibold text-gray-800">
+                            {activity.target || activity.targetName || ""}
+                          </span>
+                        </p>
+                        <span className="text-[10px] text-gray-400 mt-0.5">
+                          {activity.time || "Vừa xong"}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      <CreateProjectPage
+        isOpen={isCreateProjectOpen}
+        onClose={() => setIsCreateProjectOpen(false)}
+        onProjectCreated={fetchDashboardData}
+      />
     </div>
   );
 };

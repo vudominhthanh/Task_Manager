@@ -1,24 +1,16 @@
 server:
-  port: 8086
+  port: 8083
 
 spring:
-  application:
-    name: user-service
-
-  config:
-    import: optional:configserver:http://localhost:8888
   datasource:
     url: jdbc:postgresql://localhost:5432/Task_Manager
     username: postgres
     password: 123456
     driver-class-name: org.postgresql.Driver
   kafka:
-    bootsrap-servers: localhost:9092
-    consumer:
-      group-id: users
-      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
-      properties:
-        spring.json.trusted.package: "*"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
   jpa:
     hibernate:
       ddl-auto: update
@@ -26,10 +18,15 @@ spring:
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
+
 eureka:
   client:
     service-url:
       defaultZone: http://localhost:8761/eureka/
-  instance:
-    prefer-ip-address: true
 
+jwt:
+  secret: ${JWT_SECRET_KEY}
+
+jasypt:
+  encryptor:
+    password: ${JASYPT_ENCRYPTOR_PASSWORD}

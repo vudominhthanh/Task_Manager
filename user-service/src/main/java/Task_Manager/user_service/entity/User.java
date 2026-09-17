@@ -1,5 +1,6 @@
 package Task_Manager.user_service.entity;
 
+import Task_Manager.common_lib.entity.AuditableEntity;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -15,11 +16,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class User {
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
-
+public class User extends AuditableEntity {
     @Column(unique = true, nullable = false, length = 50)
     private String username;
 
@@ -47,18 +44,7 @@ public class User {
     @Builder.Default
     private boolean isActive = true;
 
-    @CreationTimestamp
-    @Column(name = "_created_at", updatable = false)
-    private LocalDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "_updated_at")
-    private LocalDateTime updatedAt;
-
     @Version
     @Column(name = "_version")
     private Integer version;
-
-    @Column(name = "_kafka_offset")
-    private Long kafkaOffset;
 }

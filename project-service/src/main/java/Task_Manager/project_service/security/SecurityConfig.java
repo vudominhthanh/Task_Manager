@@ -1,5 +1,7 @@
 package Task_Manager.project_service.security;
 
+import Task_Manager.common_lib.security.JwtAccessDeniedHandler;
+import Task_Manager.common_lib.security.JwtAuthenticationEntryPoint;
 import Task_Manager.common_lib.security.JwtValidationFilter;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -19,6 +21,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SecurityConfig {
     private final JwtValidationFilter jwtValidationFilter;
+    private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
+    private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -32,6 +36,10 @@ public class SecurityConfig {
                 corsConfiguration.setMaxAge(3600L);
                 return corsConfiguration;
             }))
+            .exceptionHandling(ex -> ex
+                    .authenticationEntryPoint(jwtAuthenticationEntryPoint)
+                    .accessDeniedHandler(jwtAccessDeniedHandler)
+            )
             .csrf(AbstractHttpConfigurer::disable)
             .sessionManagement(sessionManagement -> sessionManagement.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth

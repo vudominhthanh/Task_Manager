@@ -2,10 +2,6 @@ server:
   port: 8082
 
 spring:
-  application:
-    name: notification-service
-  config:
-    import: optional:configserver:http://localhost:8888
   datasource:
     url: jdbc:postgresql://localhost:5432/notifications
     username: postgres
@@ -32,5 +28,9 @@ eureka:
     service-url:
       defaultZone: http://localhost:8761/eureka/
 
+jwt:
+  secret: ${JWT_SECRET_KEY}
 
-
+jasypt:
+  encryptor:
+    password: ${JASYPT_ENCRYPTOR_PASSWORD}

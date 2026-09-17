@@ -1,40 +1,28 @@
 package Task_Manager.user_service.service;
 
-
+import Task_Manager.user_service.dto.ChangePasswordRequest;
+import Task_Manager.user_service.dto.UpdateProfileRequest;
 import Task_Manager.user_service.dto.UserResponse;
-import Task_Manager.user_service.entity.User;
-import Task_Manager.user_service.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
 
+import java.util.List;
 import java.util.UUID;
 
-@Service
-@RequiredArgsConstructor
-public class UserService {
-    private final UserRepository userRepository;
+public interface UserService {
+    UserResponse getUserById(UUID id);
 
-    public UserResponse getUserById(UUID id) {
-        User user = userRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng với ID: " + id));
+    UserResponse findByEmail(String email);
 
-        return UserResponse.builder()
-                .id(user.getId())
-                .username(user.getUsername())
-                .fullName(user.getFullname())
-                .email(user.getEmail())
-                .build();
-    }
+    UserResponse getMyProfile(String identifier);
 
-    public UserResponse findByEmail(String email) {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Không tìm thấy người dùng với email: " + email));
+    UserResponse updateProfileByIdentifier(String identifier, UpdateProfileRequest request);
 
-        UserResponse response = new UserResponse();
-        response.setId(user.getId());
-        response.setUsername(user.getUsername());
-        response.setFullName(user.getFullname());
-        response.setEmail(user.getEmail());
-        return response;
-    }
+    void changePassword(String identifier, ChangePasswordRequest request);
+
+    List<UserResponse> getAllUsers(String search);
+
+    UserResponse updateUserStatus(UUID userId, Boolean isActive);
+
+    UserResponse updateUserRole(UUID userId, String roleName);
+
+    List<UUID> getAllUserIds();
 }

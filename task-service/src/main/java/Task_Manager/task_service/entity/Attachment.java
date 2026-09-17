@@ -1,25 +1,20 @@
 package Task_Manager.task_service.entity;
 
+import Task_Manager.common_lib.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
+import lombok.experimental.SuperBuilder;
 
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
 @Table(name = "attachments")
 @Getter
 @Setter
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-public class Attachment {
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
-
+public class Attachment extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "task_id")
     private Task task;
@@ -38,8 +33,4 @@ public class Attachment {
 
     @Column(name = "s3_key", length = 500, nullable = false)
     private String s3Key;
-
-    @CreationTimestamp
-    @Column(name = "_created_at", updatable = false)
-    private LocalDateTime createdAt;
 }

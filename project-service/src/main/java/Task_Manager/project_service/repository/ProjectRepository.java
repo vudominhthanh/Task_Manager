@@ -1,9 +1,8 @@
 package Task_Manager.project_service.repository;
 
 import Task_Manager.project_service.entity.Project;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
@@ -12,17 +11,13 @@ import java.util.List;
 import java.util.UUID;
 
 @Repository
-public interface ProjectRepository extends JpaRepository<Project, UUID> {
+public interface ProjectRepository extends JpaRepository<Project, UUID>, JpaSpecificationExecutor<Project> {
     List<Project> findAllByOwnerId(UUID ownerId);
 
-    @Query("SELECT DISTINCT p FROM Project p LEFT JOIN ProjectMember pm ON p.id = pm.projectId " +
-            "WHERE (p.ownerId = :userId OR pm.userId = :userId) " +
-            "AND (:keyword IS NULL OR LOWER(p.name) LIKE LOWER(CONCAT('%', CAST(:keyword AS string), '%')))")
-    Page<Project> searchInvolvedProjects(@Param("userId") UUID userId,
-                                         @Param("keyword") String keyword,
-                                         Pageable pageable);
-
-    @Query("SELECT p.id FROM Project p WHERE p.ownerId = :userId")
+    @Query(value = """
+        SELECT id FROM projects WHERE owner_id = :userId
+        UNION
+        SELECT project_id FROM project_members WHERE user_id = :userId
+    """, nativeQuery = true)
     List<UUID> findProjectIdsByUserId(@Param("userId") UUID userId);
-
 }

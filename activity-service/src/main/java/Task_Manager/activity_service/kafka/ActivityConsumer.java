@@ -25,9 +25,7 @@ public class ActivityConsumer {
     public void consumerEvents(String messagePayload, @Header(KafkaHeaders.RECEIVED_TOPIC) String topic) {
         try {
             JsonNode message = objectMapper.readTree(messagePayload);
-
-            String type = message.has("type") ? message.get("type").asText() : "UNKNOWN";
-            JsonNode payload = message.get("payload");
+            JsonNode payload = message.path("payload");
 
             String targetType = switch (topic) {
                 case "project_events" -> "PROJECT";
@@ -38,49 +36,59 @@ public class ActivityConsumer {
                 default -> "SYSTEM";
             };
 
-            String targetId = "UNKNOWN";
-            if (payload != null) {
-                if (payload.has("project") && payload.get("project").has("id")) {
-                    targetId = payload.get("project").get("id").asText();
-                } else if (payload.has("task") && payload.get("task").has("id")) {
-                    targetId = payload.get("task").get("id").asText();
-                } else if (payload.has("comment") && payload.get("comment").has("id")) {
-                    targetId = payload.get("comment").get("id").asText();
-                } else if (payload.has("attachment") && payload.get("attachment").has("id")) {
-                    targetId = payload.get("attachment").get("id").asText();
-                } else if (payload.has("id")) {
-                    targetId = payload.get("id").asText();
-                } else if (payload.has("projectId")) {
-                    targetId = payload.get("projectId").asText();
-                } else if (payload.has("taskId")) {
-                    targetId = payload.get("taskId").asText();
-                }
+            String type = getFirstText(message, "type", "actionType");
+            if ("UNKNOWN".equals(type) && !payload.isMissingNode()) {
+                type = getFirstText(payload, "type", "actionType");
+            }
+            if ("UNKNOWN".equals(type)) {
+                type = switch (topic) {
+                    case "project_events" -> "PROJECT_UPDATED";
+                    case "task_events" -> "TASK_UPDATED";
+                    case "comment_events" -> "COMMENT_CREATED";
+                    case "attachment_events" -> "ATTACHMENT_CREATED";
+                    default -> "SYSTEM_ACTION";
+                };
             }
 
-            String username = (payload != null && payload.has("username")) ? payload.get("username").asText() : "Hệ thống";
-            String userAvatar = (payload != null && payload.has("userAvatar")) ? payload.get("userAvatar").asText() : "S";
-            String avatarColor = (payload != null && payload.has("avatarColor")) ? payload.get("avatarColor").asText() : "bg-gray-700";
-
-            String projectId = null;
-            if (payload != null) {
-                if (payload.has("projectId")) {
-                    projectId = payload.get("projectId").asText();
-                } else if (payload.has("project") && payload.get("project").has("projectId")) {
-                    projectId = payload.get("project").get("projectId").asText();
-                } else if (payload.has("task") && payload.get("task").has("projectId")) {
-                    projectId = payload.get("task").get("projectId").asText();
-                } else if (topic.equals("project_events") && payload.has("project") && payload.get("project").has("id")) {
-                    projectId = payload.get("project").get("id").asText();
-                }
+            // Ưu tiên targetId gắn với taskId để tab Activity trong task lọc được
+            String targetId = getFirstText(payload, "taskId", "id", "projectId");
+            if ("UNKNOWN".equals(targetId)) {
+                targetId = getFirstText(payload.path("attachment"), "taskId", "id");
+                if ("UNKNOWN".equals(targetId)) targetId = getFirstText(payload.path("task"), "id");
+                if ("UNKNOWN".equals(targetId)) targetId = getFirstText(payload.path("comment"), "id");
             }
 
-            String projectName = (payload != null && payload.has("projectName")) ? payload.get("projectName").asText() : projectId;
-            String targetName = (payload != null && payload.has("targetName")) ? payload.get("targetName").asText() : targetId;
+            String username = getFirstText(payload, "username");
+            if ("UNKNOWN".equals(username)) username = "Hệ thống";
 
-            Map<String, Object> payloadMap = null;
-            if (payload != null) {
-                payloadMap = objectMapper.convertValue(payload, new TypeReference<Map<String, Object>>() {});
+            String userAvatar = getFirstText(payload, "userAvatar");
+            if ("UNKNOWN".equals(userAvatar)) userAvatar = "S";
+
+            String avatarColor = getFirstText(payload, "avatarColor");
+            if ("UNKNOWN".equals(avatarColor)) avatarColor = "bg-gray-700";
+
+            String projectId = getFirstText(payload, "projectId");
+            if ("UNKNOWN".equals(projectId)) {
+                projectId = getFirstText(payload.path("attachment"), "projectId");
+                if ("UNKNOWN".equals(projectId)) projectId = getFirstText(payload.path("task"), "projectId");
+                if ("UNKNOWN".equals(projectId)) projectId = getFirstText(payload.path("project"), "id");
             }
+
+            String projectName = getFirstText(payload, "projectName");
+            if ("UNKNOWN".equals(projectName)) projectName = "Dự án";
+
+            // Tên thực thể hiển thị (ví dụ tên file, tên công việc)
+            String targetName = getFirstText(payload, "targetName");
+            if ("UNKNOWN".equals(targetName) && "ATTACHMENT".equals(targetType)) {
+                targetName = getFirstText(payload.path("attachment"), "fileName");
+            }
+            if ("UNKNOWN".equals(targetName)) {
+                targetName = getFirstText(payload.path("task"), "title");
+            }
+            if ("UNKNOWN".equals(targetName)) targetName = "Tài liệu";
+
+            Map<String, Object> payloadMap = payload.isMissingNode() ? null :
+                    objectMapper.convertValue(payload, new TypeReference<Map<String, Object>>() {});
 
             ActivityEvent event = ActivityEvent.builder()
                     .targetType(targetType)
@@ -96,9 +104,20 @@ public class ActivityConsumer {
                     .build();
 
             activityService.createActivityLog(event);
-            log.info("Activity {} has been published for type {}", targetType, type);
+            log.info("Activity ghi nhận thành công cho [{}]: {} trên [{}]", targetType, type, targetName);
         } catch (Exception e) {
             log.error("Lỗi khi xử lý message Kafka từ topic {}: {}", topic, messagePayload, e);
         }
+    }
+
+    private String getFirstText(JsonNode node, String... keys) {
+        if (node == null || node.isMissingNode()) return "UNKNOWN";
+        for (String key : keys) {
+            JsonNode val = node.get(key);
+            if (val != null && !val.isNull() && !val.asText().equals("null") && !val.asText().trim().isEmpty()) {
+                return val.asText();
+            }
+        }
+        return "UNKNOWN";
     }
 }

@@ -19,6 +19,15 @@ import java.util.UUID;
 public class TaskController {
     private final TaskService taskService;
 
+    private boolean checkIsSystemAdmin(Authentication authentication) {
+        if (authentication == null || authentication.getAuthorities() == null) {
+            return false;
+        }
+        return authentication.getAuthorities().stream()
+                .anyMatch(auth -> "SYS_AD".equalsIgnoreCase(auth.getAuthority())
+                        || "ROLE_SYS_AD".equalsIgnoreCase(auth.getAuthority()));
+    }
+
     @GetMapping("/{id}")
     public ResponseEntity<TaskResponse> getTaskById(@PathVariable UUID id) {
         return ResponseEntity.ok(taskService.getTaskById(id));
@@ -32,40 +41,35 @@ public class TaskController {
     @PostMapping
     public ResponseEntity<TaskResponse> createTask(@RequestBody TaskRequest taskRequest, Authentication authentication) {
         UUID userId = UUID.fromString(authentication.getName());
-        boolean isSystemAdmin = authentication.getAuthorities().stream()
-                .anyMatch(auth -> auth.getAuthority().equals("SYS_AD"));
+        boolean isSystemAdmin = checkIsSystemAdmin(authentication);
         return ResponseEntity.status(HttpStatus.CREATED).body(taskService.createTask(taskRequest, userId, isSystemAdmin));
     }
 
     @PostMapping("/{parentTaskId}/sub-tasks")
     public  ResponseEntity<TaskResponse> createSubTask(@PathVariable UUID parentTaskId, @RequestBody TaskRequest taskRequest, Authentication authentication) {
         UUID userId = UUID.fromString(authentication.getName());
-        boolean isSystemAdmin = authentication.getAuthorities().stream()
-                .anyMatch(auth -> auth.getAuthority().equals("SYS_AD"));
+        boolean isSystemAdmin = checkIsSystemAdmin(authentication);
         return  ResponseEntity.status(HttpStatus.CREATED).body(taskService.createSubTask(parentTaskId, taskRequest, userId, isSystemAdmin));
     }
 
     @PutMapping("/{id}")
     public ResponseEntity<TaskResponse> updateTask(@PathVariable UUID id, @RequestBody TaskRequest taskRequest, Authentication authentication) {
         UUID userId = UUID.fromString(authentication.getName());
-        boolean isSystemAdmin = authentication.getAuthorities().stream()
-                .anyMatch(auth -> auth.getAuthority().equals("SYS_AD"));
+        boolean isSystemAdmin = checkIsSystemAdmin(authentication);
         return ResponseEntity.ok(taskService.updateTask(id, taskRequest, userId, isSystemAdmin));
     }
 
     @PatchMapping("/{id}/status")
     public ResponseEntity<TaskResponse> updateTaskStatus(@PathVariable UUID id, @RequestBody TaskRequest taskRequest, Authentication authentication) {
         UUID userId = UUID.fromString(authentication.getName());
-        boolean isSystemAdmin = authentication.getAuthorities().stream()
-                .anyMatch(auth -> auth.getAuthority().equals("SYS_AD"));
+        boolean isSystemAdmin = checkIsSystemAdmin(authentication);
         return ResponseEntity.ok(taskService.updateTaskStatus(id, taskRequest, userId, isSystemAdmin));
     }
 
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTask(@PathVariable UUID id, Authentication authentication) {
         UUID userId = UUID.fromString(authentication.getName());
-        boolean isSystemAdmin = authentication.getAuthorities().stream()
-                .anyMatch(auth -> auth.getAuthority().equals("SYS_AD"));
+        boolean isSystemAdmin = checkIsSystemAdmin(authentication);
         taskService.deleteTask(id, userId, isSystemAdmin);
         return ResponseEntity.noContent().build();
     }
@@ -80,5 +84,10 @@ public class TaskController {
     public ResponseEntity<List<TaskResponse>> getMyAssignedTasks(Authentication authentication) {
         UUID userId = UUID.fromString(authentication.getName());
         return ResponseEntity.ok(taskService.getTasksByAssigneeId(userId));
+    }
+
+    @GetMapping("/internal/project/{projectId}")
+    public ResponseEntity<List<TaskResponse>> getTasksByProjectIdInternal(@PathVariable UUID projectId) {
+        return ResponseEntity.ok(taskService.getTaskByProjectId(projectId));
     }
 }

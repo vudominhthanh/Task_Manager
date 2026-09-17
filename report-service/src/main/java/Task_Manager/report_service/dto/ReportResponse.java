@@ -1,9 +1,11 @@
 package Task_Manager.report_service.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -21,6 +23,7 @@ public class ReportResponse {
         private LocalDate startDate;
         private LocalDate dueDate;
         private UUID parentTaskId;
+        private LocalDateTime completedAt;
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
     }

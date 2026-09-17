@@ -1,55 +1,5 @@
-sever:
-  port: 8087
-
 spring:
   application:
     name: api-gateway
-
   config:
     import: optional:configserver:http://localhost:8888
-
-  cloud:
-    gateway:
-      discovery:
-        locator:
-          enabled: true
-          lower-case-service-id: true
-      routes:
-        - id: user-service-route
-          uri: lm://user-service
-          predicates:
-            - Path=/api/users/**
-
-        - id: task-service-route
-          uri: lb://task-service
-          predicates:
-            - Path=/api/tasks/**, /api/comments/**, /api/attachments/**
-
-        - id: project-service-route
-          uri: lb://project-service
-          predicates:
-            - Path=/api/project/**
-
-        - id: report-service-route
-          uri: lb://report-service
-          predicates:
-            - Path=/api/report/**
-
-        - id: notification-service-route
-          uri: lb://notification-service
-          predicates:
-            - Path=/api/notification/**
-
-        - id: activity-service-route
-          uri: lb://activity-service
-          predicates:
-            - Path=/api/activity/**
-
-        - id: websocket-route
-          uri: lb:ws://notification-service
-          predicates:
-            - Path=/ws/**
-  eureka:
-    client:
-      service-url:
-        defaultZone: https://localhost:8761/eureka/

@@ -1,6 +1,8 @@
 package Task_Manager.notification_service.controller;
 
+import Task_Manager.notification_service.Service.EmailConfigService;
 import Task_Manager.notification_service.Service.NotificationService;
+import Task_Manager.notification_service.dto.BroadcastRequest;
 import Task_Manager.notification_service.dto.NotificationResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -9,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.security.Principal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -17,6 +20,7 @@ import java.util.UUID;
 @CrossOrigin("*")
 public class NotificationController {
     private final NotificationService notificationService;
+    private final EmailConfigService emailConfigService;
 
     @GetMapping
     public ResponseEntity<List<NotificationResponse>> getUserNotifications(Principal principal) {

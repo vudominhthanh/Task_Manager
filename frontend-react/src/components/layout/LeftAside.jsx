@@ -1,16 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { NavLink, useLocation } from "react-router-dom";
-import {
-  CheckSquare,
-  Home,
-  Bell,
-  Activity,
-  Calendar,
-  BarChart2,
-  Settings,
-  ChevronRight,
-  LayoutGrid,
-} from "lucide-react";
+import apiClient from "../../utils/apiClient";
+import { CheckSquare, Home, Bell, Activity, Calendar, BarChart2, Settings, ChevronRight, LayoutGrid, } from "lucide-react";
 import CreateProjectPage from "../function/CreateProjectPage";
 import ManageMembersModal from "../function/ManageMembersModal";
 import { useEvent, EVENTS } from "../../hooks/useEventBus";
@@ -30,120 +21,95 @@ export default function LeftAside() {
   const getToken = () => localStorage.getItem("accessToken") || "";
 
   const fetchUnreadCount = useCallback(async () => {
-  const token = getToken();
-  if (!token) return; 
+    const token = getToken();
+    if (!token) return;
 
-  try {
-    const response = await fetch(
-      "http://localhost:8082/api/notifications/unread-count",
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/json, text/plain",
-        },
-      }
-    );
+    try {
+      const res = await apiClient.get("http://localhost:8082/api/notifications/unread-count");
 
-    if (!response.ok) {
-      console.error(`Fetch unread count failed with status: ${response.status}`);
-      return;
-    }
-    const contentType = response.headers.get("content-type") || "";
-    let count = 0;
+      const data = res.data;
+      let count = 0;
 
-    if (contentType.includes("application/json")) {
-      const data = await response.json();
       if (typeof data === "number") {
         count = data;
       } else if (typeof data === "object" && data !== null) {
         count = data.count ?? data.unreadCount ?? data.data ?? 0;
+      } else {
+        count = parseInt(data, 10) || 0;
       }
-    } else {
-      const text = await response.text();
-      count = parseInt(text, 10) || 0;
+
+      setUnreadCount(Number.isFinite(count) ? count : 0);
+    } catch (error) {
+      console.error("Lỗi khi tải số lượng thông báo:", error);
     }
-
-    setUnreadCount(Number.isFinite(count) ? count : 0);
-  } catch (error) {
-    console.error("Lỗi khi tải số lượng thông báo:", error);
-  }
-}, []);
-
+  }, []);
 
   const fetchProjects = useCallback(async () => {
     try {
-      const response = await fetch("http://localhost:8083/api/projects", {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        const projectList = data.content ? data.content : data;
+      const res = await apiClient.get("http://localhost:8083/api/projects");
 
-        const formattedProjects = projectList.map((p) => ({
-          id: p.id,
-          name: p.name,
-          path: `/project/${p.id}`,
-          color: "text-indigo-600",
-          bg: "bg-indigo-100",
-        }));
-        setProjects(formattedProjects);
-      }
+      const data = res.data;
+      const projectList = data.content ? data.content : data;
+
+      const formattedProjects = projectList.map((p) => ({
+        id: p.id,
+        name: p.name,
+        path: `/project/${p.id}`,
+        color: "text-indigo-600",
+        bg: "bg-indigo-100",
+      }));
+      setProjects(formattedProjects);
     } catch (error) {
       console.error("Lỗi tải danh sách dự án:", error);
     }
   }, []);
 
-  // 3. Tải danh sách thành viên (theo dự án hiện tại hoặc toàn bộ team)
   const fetchMembers = useCallback(async () => {
     try {
       const url = currentProjectId
         ? `http://localhost:8083/api/projects/${currentProjectId}/members`
         : `http://localhost:8083/api/projects/my-members`;
-      const response = await fetch(url, {
-        headers: { Authorization: `Bearer ${getToken()}` },
-      });
-      if (response.ok) {
-        const data = await response.json();
-        const memberList = Array.isArray(data) ? data : data.content || [];
+      const res = await apiClient.get(url);
+      const data = res.data;   
+      const memberList = Array.isArray(data) ? data : data.content || [];
 
-        const formattedMembers = memberList.map((m) => {
-          const memberName = m.fullName || m.fullname || m.name || "Thành viên";
-          return {
-            id: m.userId || m.id,
-            name: memberName,
-            avatar: memberName.charAt(0).toUpperCase(),
-            status: m.status || "online",
-            color: "bg-blue-500",
-          };
-        });
-        const uniqueMembers = Array.from(
-          new Map(formattedMembers.map((item) => [item.id, item])).values(),
-        );
-        setMembers(uniqueMembers);
-      }
+      const formattedMembers = memberList.map((m) => {
+        const memberName = m.fullName || m.fullname || m.name || "Thành viên";
+        return {
+          id: m.userId || m.id,
+          name: memberName,
+          avatar: memberName.charAt(0).toUpperCase(),
+          status: m.status || "online",
+          color: "bg-blue-500",
+        };
+      });
+      
+      const uniqueMembers = Array.from(
+        new Map(formattedMembers.map((item) => [item.id, item])).values(),
+      );
+      setMembers(uniqueMembers);
     } catch (error) {
       console.error("Lỗi tải danh sách thành viên:", error);
     }
   }, [currentProjectId]);
 
-  // Load ban đầu hoặc khi đổi Project trên URL
   useEffect(() => {
     fetchUnreadCount();
     fetchProjects();
     fetchMembers();
   }, [fetchUnreadCount, fetchProjects, fetchMembers]);
 
-  // ==========================================
-  // REALTIME QUA USEEVENT (GỌN GÀNG - CHUẨN XÁC)
-  // ==========================================
-  // 1. Nhận thông báo mới -> Cập nhật số badge đỏ
-  useEvent(EVENTS.NOTIFICATION, fetchUnreadCount);
+  useEvent(EVENTS.NOTIFICATION, () => {
+    fetchUnreadCount();
+    fetchProjects();
+    fetchMembers();
+  });
 
-  // 2. Dự án thay đổi (Tạo mới, sửa tên, xóa) -> Reload list dự án
   useEvent(EVENTS.PROJECT, fetchProjects);
 
-  // 3. Thành viên thay đổi (Thêm/xóa/đổi role) -> Reload list thành viên
   useEvent(EVENTS.MEMBER, fetchMembers);
+
+  useEvent(EVENTS.USER, fetchMembers);
 
   const menuItems = [
     { id: 1, icon: Home, label: "Tổng quan", path: "/" },
@@ -331,17 +297,25 @@ export default function LeftAside() {
 
       <div className="p-3 border-t border-gray-100 mt-auto">
         <div className="flex items-center justify-between px-2 py-2 text-[13px] text-gray-600 hover:bg-gray-50 hover:text-gray-900 rounded-lg cursor-pointer transition-all duration-200 group">
-          <div className="flex items-center gap-2 font-medium">
-            <Settings
-              size={15}
-              className="text-gray-400 group-hover:rotate-90 transition-transform duration-500"
+          <NavLink
+            to="/settings"
+            className={({ isActive }) => `
+              flex items-center justify-between px-2 py-2 text-[13px] rounded-lg cursor-pointer transition-all duration-200 group
+              ${isActive ? "bg-indigo-50 text-indigo-700 font-semibold" : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"}
+            `}
+          >
+            <div className="flex items-center gap-2 font-medium">
+              <Settings
+                size={15}
+                className="text-gray-400 group-hover:rotate-90 transition-transform duration-500"
+              />
+              Cài đặt
+            </div>
+            <ChevronRight
+              size={14}
+              className="text-gray-300 group-hover:text-gray-500 transition-colors"
             />
-            Cài đặt
-          </div>
-          <ChevronRight
-            size={14}
-            className="text-gray-300 group-hover:text-gray-500 transition-colors"
-          />
+          </NavLink>
         </div>
       </div>
 

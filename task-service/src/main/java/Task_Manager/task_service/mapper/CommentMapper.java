@@ -22,7 +22,7 @@ public interface CommentMapper {
     @Mapping(source = "userId", target = "userId")
     @Mapping(source = "parentComment", target = "parentComment")
     @Mapping(target = "createdAt", ignore = true)
-    @Mapping(target = "updateDate", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
     Comment toEntity(CommentRequest request, Task task, UUID userId, Comment parentComment);
 
     @Mapping(target = "id", ignore = true)
@@ -30,7 +30,7 @@ public interface CommentMapper {
     @Mapping(target = "userId", ignore = true)
     @Mapping(target = "parentComment", ignore = true)
     @Mapping(target = "createdAt", ignore = true)
-    @Mapping(target = "updateDate", ignore = true)
+    @Mapping(target = "updatedAt", ignore = true)
     void updateEntityFromRequest(CommentRequest request, @MappingTarget Comment comment);
 }
 

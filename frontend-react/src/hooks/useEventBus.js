@@ -7,9 +7,9 @@ export const EVENTS = {
   PROJECT: "event:project",       
   MEMBER: "event:member",         
   NOTIFICATION: "event:notification", 
+  USER: "event:user",
+  BROADCAST: "event:broadcast",
 };
-
-
 
 export const emitEvent = (eventName, data = {}) => {
   window.dispatchEvent(new CustomEvent(eventName, { detail: data }));

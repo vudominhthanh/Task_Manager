@@ -4,8 +4,10 @@ import Task_Manager.activity_service.dto.ActivityResponse;
 import Task_Manager.activity_service.service.ActivityService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.security.Principal;
 import java.util.List;
 import java.util.UUID;
 
@@ -18,8 +20,20 @@ public class ActivityController {
     @GetMapping
     public ResponseEntity<List<ActivityResponse.Group>> getActivities(
             @RequestParam(required = false) String search,
-            @RequestParam(required = false) String project) {
-        List<ActivityResponse.Group> response = activityService.getGroupedActivities(search, project);
+            @RequestParam(required = false) String project,
+            Authentication authentication) {
+
+        boolean isSysAdmin = authentication != null && authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_SYS_AD") || a.getAuthority().equals("SYS_AD"));
+        UUID currentUserId = null;
+        if (!isSysAdmin && authentication != null) {
+            try {
+                currentUserId = UUID.fromString(authentication.getName());
+            } catch (IllegalArgumentException e) {
+
+            }
+        }
+        List<ActivityResponse.Group> response = activityService.getGroupedActivities(search, project, currentUserId);
         return ResponseEntity.ok(response);
     }
 

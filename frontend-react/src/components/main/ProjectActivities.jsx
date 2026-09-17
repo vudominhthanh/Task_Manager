@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useEvent, EVENTS } from "../../hooks/useEventBus";
 import { useParams } from 'react-router-dom';
+import apiClient from "../../utils/apiClient";
 import { PlusCircle, MessageSquare, ArrowRightLeft, CheckCircle, Loader2, Activity, Trash2, Edit3 } from 'lucide-react';
 
 const ProjectActivities = () => {
@@ -11,33 +12,21 @@ const ProjectActivities = () => {
   const [projectName, setProjectName] = useState("");
   const [loading, setLoading] = useState(true);
 
-  const getToken = () => localStorage.getItem("accessToken") || "";
-
   const fetchAllData = useCallback(async () => {
     if (!projectId) return;
     try {
       const [activitiesRes, membersRes, tasksRes, projectRes] = await Promise.all([
-        fetch(`http://localhost:8081/api/activities/project/${projectId}`, {
-          headers: { "Authorization": `Bearer ${getToken()}` }
-        }),
-        fetch(`http://localhost:8083/api/projects/${projectId}/members`, {
-          headers: { "Authorization": `Bearer ${getToken()}` }
-        }),
-        fetch(`http://localhost:8085/api/tasks/project/${projectId}`, {
-          headers: { "Authorization": `Bearer ${getToken()}` }
-        }),
-        fetch(`http://localhost:8083/api/projects/${projectId}`, {
-          headers: { "Authorization": `Bearer ${getToken()}` }
-        })
+        apiClient.get(`http://localhost:8081/api/activities/project/${projectId}`),
+        apiClient.get(`http://localhost:8083/api/projects/${projectId}/members`),
+        apiClient.get(`http://localhost:8085/api/tasks/project/${projectId}`),
+        apiClient.get(`http://localhost:8083/api/projects/${projectId}`)
       ]);
 
-      if (activitiesRes.ok) setActivityGroups(await activitiesRes.json());
-      if (membersRes.ok) setMembers(await membersRes.json());
-      if (tasksRes.ok) setTasks(await tasksRes.json());
-      if (projectRes.ok) {
-        const projData = await projectRes.json();
-        setProjectName(projData.name || projData.projectName || "Dự án hiện tại");
-      }
+      setActivityGroups(activitiesRes.data || []);
+      setMembers(membersRes.data || []);
+      setTasks(tasksRes.data || []);
+      const projData = projectRes.data;
+      setProjectName(projData.name || projData.projectName || "Dự án hiện tại");
     } catch (error) {
       console.error("Lỗi khi tải lịch sử hoạt động:", error);
     } finally {
@@ -70,7 +59,6 @@ const ProjectActivities = () => {
     return taskIdOrTitle;
   };
 
-  // Hàm chuyển đổi actionType kỹ thuật thành văn bản tiếng Việt mượt mà
   const translateActionText = (actionType) => {
     const type = (actionType || "").toUpperCase();
     switch (type) {
@@ -130,9 +118,17 @@ const ProjectActivities = () => {
                         </div>
                         <div className="bg-gray-50/50 p-4 rounded-xl border border-gray-100 hover:bg-gray-50 transition-colors">
                           <p className="text-[13px] text-gray-700 leading-relaxed">
-                            <span className="font-bold text-gray-900">{displayUser}</span>{" "}
-                            <span className="font-medium text-indigo-600">{actionText}</span>{" "}
-                            công việc <span className="font-bold text-gray-900 cursor-pointer hover:text-indigo-600 transition-colors">{displayTarget}</span>
+                            {(() => {
+                              const type = (act.actionType || "").toUpperCase(); 
+                              const userSpan = <span className="font-bold text-gray-900">{displayUser}</span>;
+                              const targetSpan = <span className="font-bold text-gray-900 cursor-pointer hover:text-indigo-600 transition-colors">{displayTarget}</span>;
+                              if (["USER_LOGGED", "USER_LOGGED_IN", "USER_REGISTERED"].includes(type)) {
+                                return <>{userSpan} <span className="font-medium text-indigo-600">{actionText}</span></>;
+                              }
+                              return (
+                                <>{userSpan} <span className="font-medium text-indigo-600">{actionText}</span> {targetSpan}</>
+                              );
+                            })()}
                           </p>
                           
                           {act.payloadDetails && act.payloadDetails.comment && (

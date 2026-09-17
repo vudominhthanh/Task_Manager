@@ -3,6 +3,7 @@ package Task_Manager.websocket_service.config;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
 import org.springframework.messaging.simp.stomp.StompCommand;
@@ -18,8 +19,8 @@ import java.util.Collections;
 
 @Component
 public class StompAuthInterceptor implements ChannelInterceptor {
-
-    private final String SECRET_KEY = "qwertyuiopasdfghjklzxcvbnm1234567890qwertyuiopasdfghjklzxcvbnm";
+    @Value("${jwt.secret}")
+    private String SECRET_KEY;
 
     @Override
     public Message<?> preSend(Message<?> message, MessageChannel channel) {

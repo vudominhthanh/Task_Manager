@@ -18,5 +18,8 @@ public interface UserClient {
 
     @PostMapping("/api/users/batch")
     List<UserDto> getUsersByIds(@RequestBody List<UUID> userIds);
+
+    @GetMapping("/api/users/all-ids")
+    List<UUID> getAllUsers();
 }
 

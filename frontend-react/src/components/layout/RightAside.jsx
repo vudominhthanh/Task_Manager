@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import apiClient from "../../utils/apiClient";
 import { LayoutGrid, LogOut, Sparkles } from "lucide-react";
 import ProjectRight from "../right-aside/ProjectRight"; 
+import { useEvent , EVENTS } from "../../hooks/useEventBus";
 
 const RightAside = ({ selectedTaskId, onCloseTask }) => {
   const location = useLocation();
@@ -10,7 +12,12 @@ const RightAside = ({ selectedTaskId, onCloseTask }) => {
 
   const [currentUser, setCurrentUser] = useState(null);
 
-  useEffect(() => {
+  const loadCurrentUser = useCallback((updatedUserData = null) => {
+    if (updatedUserData && typeof updatedUserData === "object") {
+      setCurrentUser(prev => ({ ...prev, ...updatedUserData }));
+      return;
+    }
+
     try {
       const userStr = localStorage.getItem("user");
       if (userStr) {
@@ -25,6 +32,14 @@ const RightAside = ({ selectedTaskId, onCloseTask }) => {
       console.error("Lỗi đọc thông tin user:", e);
     }
   }, []);
+
+  useEffect(() => {
+    loadCurrentUser();
+  }, [loadCurrentUser]);
+
+  useEvent(EVENTS.USER, (eventData) => {
+    loadCurrentUser(eventData);
+  });
 
   const handleLogout = () => {
     localStorage.clear(); 

@@ -7,6 +7,7 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
+        <module name="config-server" />
         <module name="discovery-server" />
         <module name="common-lib" />
       </profile>
@@ -20,16 +21,6 @@
           <entry name="$MAVEN_REPOSITORY$/org/projectlombok/lombok-mapstruct-binding/0.2.0/lombok-mapstruct-binding-0.2.0.jar" />
         </processorPath>
         <module name="task-service" />
-      </profile>
-      <profile name="Annotation profile for api-gateway" enabled="true">
-        <sourceOutputDir name="target/generated-sources/annotations" />
-        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
-        <outputRelativeToContentRoot value="true" />
-        <processorPath useClasspath="false">
-          <entry name="$MAVEN_REPOSITORY$/org/projectlombok/lombok/1.18.46/lombok-1.18.46.jar" />
-          <entry name="$MAVEN_REPOSITORY$/org/projectlombok/lombok/1.18.46/lombok-1.18.46.jar" />
-        </processorPath>
-        <module name="api-gateway" />
       </profile>
       <profile name="Annotation profile for notification-service" enabled="true">
         <sourceOutputDir name="target/generated-sources/annotations" />
@@ -62,6 +53,7 @@
         <processorPath useClasspath="false">
           <entry name="$MAVEN_REPOSITORY$/org/projectlombok/lombok/1.18.46/lombok-1.18.46.jar" />
         </processorPath>
+        <module name="api-gateway" />
         <module name="websocket_service" />
         <module name="user-service" />
       </profile>
@@ -69,6 +61,7 @@
     <bytecodeTargetLevel>
       <module name="activity-service.main" target="21" />
       <module name="activity-service.test" target="21" />
+      <module name="config-service" target="17" />
       <module name="notification-service.main" target="21" />
       <module name="notification-service.test" target="21" />
       <module name="task-service.main" target="21" />
@@ -82,6 +75,8 @@
       <module name="activity-service.test" options="-parameters" />
       <module name="api-gateway" options="-parameters" />
       <module name="common-lib" options="-parameters" />
+      <module name="config-server" options="-parameters" />
+      <module name="config-service" options="-parameters" />
       <module name="discovery-server" options="-parameters" />
       <module name="notification-service" options="-parameters" />
       <module name="notification-service.main" options="-parameters" />

@@ -17,13 +17,13 @@ import java.util.UUID;
 public interface ActivityMapper {
 
     @Mapping(source = "targetType", target = "targetType")
-    @Mapping(source = "targetId", target = "targetId")
+    @Mapping(source = "event", target = "targetId", qualifiedByName = "resolveTargetId")
     @Mapping(source = "actionType", target = "actionType")
-    @Mapping(source = "userId", target = "userId")
+    @Mapping(source = "event", target = "userId", qualifiedByName = "resolveUserId")
     @Mapping(source = "username", target = "username")
     @Mapping(source = "userAvatar", target = "userAvatar")
     @Mapping(source = "avatarColor", target = "avatarColor")
-    @Mapping(source = "projectId", target = "projectId")
+    @Mapping(source = "event", target = "projectId", qualifiedByName = "resolveProjectId")
     @Mapping(source = "projectName", target = "projectName")
     @Mapping(source = "targetName", target = "targetName")
     @Mapping(source = "payloadDetails", target = "payloadDetails")
@@ -37,7 +37,7 @@ public interface ActivityMapper {
     @Mapping(source = "actionType", target = "actionType")
     @Mapping(source = "targetName", target = "target")
     @Mapping(source = "targetType", target = "targetType")
-    @Mapping(source = "payloadDetails", target = "details", qualifiedByName = "extractDetails")
+    @Mapping(source = "activity", target = "details", qualifiedByName = "extractDetails")
     @Mapping(source = "projectId", target = "project", qualifiedByName = "resolveProjectName")
     @Mapping(source = "createdAt", target = "time", qualifiedByName = "formatTime")
     @Mapping(source = "createdAt", target = "date", qualifiedByName = "formatDate")
@@ -50,7 +50,86 @@ public interface ActivityMapper {
 
     @Named("defaultAvatarColor")
     default String defaultAvatarColor(String avatarColor) {
-        return avatarColor != null ? avatarColor : "bg-blue-500";
+        return avatarColor != null ? avatarColor : "bg-indigo-600";
+    }
+
+    @Named("resolveUserId")
+    default String resolveUserId(ActivityEvent event) {
+        if (event == null) return null;
+        if (event.getUserId() != null && !event.getUserId().trim().isEmpty()) {
+            return event.getUserId();
+        }
+
+        Map<String, Object> payload = event.getPayloadDetails();
+        if (payload != null) {
+            if (payload.get("createdBy") != null) return String.valueOf(payload.get("createdBy"));
+            if (payload.get("loggedInBy") != null) return String.valueOf(payload.get("loggedInBy"));
+            if (payload.get("deletedBy") != null) return String.valueOf(payload.get("deletedBy"));
+            if (payload.get("user") instanceof Map<?, ?> userMap && userMap.get("id") != null) {
+                return String.valueOf(userMap.get("id"));
+            }
+        }
+        return null;
+    }
+
+    @Named("resolveTargetId")
+    default String resolveTargetId(ActivityEvent event) {
+        if (event == null) return null;
+        String targetId = event.getTargetId();
+        if (targetId == null || targetId.equalsIgnoreCase("UNKNOWN")) {
+            return resolveUserId(event);
+        }
+        return targetId;
+    }
+
+    @Named("resolveProjectId")
+    default String resolveProjectId(ActivityEvent event) {
+        if (event == null) return null;
+        if (event.getProjectId() != null && !event.getProjectId().trim().isEmpty() && !event.getProjectId().equalsIgnoreCase("UNKNOWN")) {
+            return event.getProjectId();
+        }
+
+        Map<String, Object> payload = event.getPayloadDetails();
+        if (payload != null) {
+            if (payload.get("projectId") != null) return String.valueOf(payload.get("projectId"));
+            if (payload.get("task") instanceof Map<?, ?> taskMap && taskMap.get("projectId") != null) {
+                return String.valueOf(taskMap.get("projectId"));
+            }
+        }
+        return null;
+    }
+
+    @Named("extractDetails")
+    default String extractDetails(Activity activity) {
+        if (activity == null || activity.getPayloadDetails() == null) {
+            return "";
+        }
+
+        Map<String, Object> payload = activity.getPayloadDetails();
+
+        if (payload.containsKey("details") && payload.get("details") != null) {
+            return String.valueOf(payload.get("details"));
+        }
+
+        if (payload.containsKey("oldStatus")) {
+            String oldStatus = String.valueOf(payload.get("oldStatus"));
+            String newStatus = "";
+            if (payload.get("task") instanceof Map<?, ?> taskMap && taskMap.get("status") != null) {
+                newStatus = String.valueOf(taskMap.get("status"));
+            }
+            if (!newStatus.isEmpty()) {
+                return oldStatus + " → " + newStatus;
+            }
+        }
+
+        if (payload.get("comment") instanceof Map<?, ?> commentMap && commentMap.get("content") != null) {
+            return String.valueOf(commentMap.get("content"));
+        }
+        if (payload.containsKey("content") && payload.get("content") != null) {
+            return String.valueOf(payload.get("content"));
+        }
+
+        return "";
     }
 
     @Named("actionText")
@@ -62,9 +141,10 @@ public interface ActivityMapper {
         return switch (actionType) {
             case "USER_REGISTERED" -> "đã đăng ký tài khoản";
             case "USER_LOGGED" -> "đã đăng nhập hệ thống";
+            case "USER_UPDATED" -> "đã cập nhật thông tin";
 
             case "TASK_CREATED" -> "đã tạo công việc";
-            case "SUB_TASK_CREATED" -> "đã tạo công việc con trong";
+            case "SUB_TASK_CREATED" -> "đã tạo công việc con : ";
             case "TASK_UPDATED" -> "đã chỉnh sửa công việc";
             case "TASK_STATUS_UPDATED" -> "đã thay đổi trạng thái của";
             case "TASK_DELETED" -> "đã xóa công việc";
@@ -88,17 +168,6 @@ public interface ActivityMapper {
         };
     }
 
-    @Named("extractDetails")
-    default String extractDetails(Map<String, Object> payloadDetails) {
-        if (payloadDetails == null || !payloadDetails.containsKey("details")) {
-            return "";
-        }
-
-        Object details = payloadDetails.get("details");
-
-        return details != null ? String.valueOf(details) : "";
-    }
-
     @Named("formatTime")
     default String formatTime(LocalDateTime createdAt) {
         if (createdAt == null) {
@@ -117,23 +186,21 @@ public interface ActivityMapper {
         LocalDate today = LocalDate.now();
 
         if (date.equals(today)) {
-            return "Hôm nay, " +
-                    date.format(DateTimeFormatter.ofPattern("dd/MM"));
+            return "Hôm nay, " + date.format(DateTimeFormatter.ofPattern("dd/MM"));
         }
 
         if (date.equals(today.minusDays(1))) {
-            return "Hôm qua, " +
-                    date.format(DateTimeFormatter.ofPattern("dd/MM"));
+            return "Hôm qua, " + date.format(DateTimeFormatter.ofPattern("dd/MM"));
         }
 
-        return date.format(
-                DateTimeFormatter.ofPattern("dd/MM/yyyy")
-        );
+        return date.format(DateTimeFormatter.ofPattern("dd/MM/yyyy"));
     }
 
     @Named("resolveProjectName")
-    default String resolveProjectName(UUID projectId) {
-        return projectId != null ? projectId.toString() : "";
+    default String resolveProjectName(String projectId) {
+        if (projectId == null || projectId.equals("UNKNOWN")) {
+            return "";
+        }
+        return projectId;
     }
-
 }

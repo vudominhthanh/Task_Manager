@@ -1,12 +1,20 @@
 import React, { useState, useEffect } from "react";
 import { Menu, Star, Plus, Bell, Loader2 } from "lucide-react";
-import { NavLink, Outlet, useParams, useOutletContext, useNavigate } from "react-router-dom";
+import apiClient from "../../utils/apiClient";
+import {
+  NavLink,
+  Outlet,
+  useParams,
+  useOutletContext,
+  useNavigate,
+} from "react-router-dom";
 import CreateTaskPage from "../function/CreateTaskPage";
+import { useEvent, EVENTS } from "../../hooks/useEventBus";
 
 const ProjectLayout = () => {
   const { projectId } = useParams();
   const navigate = useNavigate();
-  
+
   const [project, setProject] = useState(null);
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -23,45 +31,42 @@ const ProjectLayout = () => {
     { name: "Cài đặt", path: "settings" },
   ];
 
-  const avatarColors = ["bg-blue-500", "bg-emerald-500", "bg-amber-500", "bg-rose-500", "bg-purple-500", "bg-indigo-600"];
-
-  const getToken = () => localStorage.getItem("accessToken") || "";
-
+  const avatarColors = [
+    "bg-blue-500",
+    "bg-emerald-500",
+    "bg-amber-500",
+    "bg-rose-500",
+    "bg-purple-500",
+    "bg-indigo-600",
+  ];
   const context = useOutletContext();
 
-  useEffect(() => {
+  const fetchProjectData = React.useCallback(async () => {
     if (!projectId) return;
 
-    const fetchProjectData = async () => {
-      setLoading(true);
-      try {
-        const projectRes = await fetch(`http://localhost:8083/api/projects/${projectId}`, {
-          headers: { "Authorization": `Bearer ${getToken()}` },
-        });
-        if (projectRes.ok) {
-          const projectData = await projectRes.json();
-          setProject(projectData);
-        }
-
-        const membersRes = await fetch(`http://localhost:8083/api/projects/${projectId}/members`, {
-          headers: { "Authorization": `Bearer ${getToken()}` },
-        });
-        if (membersRes.ok) {
-          const membersData = await membersRes.json();
-          setMembers(membersData);
-        }
-      } catch (error) {
-        console.error("Lỗi tải dữ liệu ProjectLayout:", error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchProjectData();
+    try {
+      const [projectRes, membersRes] = await Promise.all([
+        apiClient.get(`http://localhost:8083/api/projects/${projectId}`),
+        apiClient.get(`http://localhost:8083/api/projects/${projectId}/members`),
+      ]);
+      setProject(projectRes.data || null);
+      setMembers(Array.isArray(membersRes.data) ? membersRes.data : []);
+    } catch (error) {
+      console.error("Lỗi tải dữ liệu ProjectLayout:", error);
+    } finally {
+      setLoading(false);
+    }
   }, [projectId]);
 
+  useEffect(() => {
+    setLoading(true);
+    fetchProjectData();
+  }, [fetchProjectData]);
+
+  useEvent(EVENTS?.USER || "USER", fetchProjectData);
+
   const handleHeaderAddTask = () => {
-    setIsCreateTaskOpen(true); 
+    setIsCreateTaskOpen(true);
   };
 
   if (loading) {
@@ -94,22 +99,29 @@ const ProjectLayout = () => {
               <h1 className="text-[22px] font-bold text-gray-900 tracking-tight">
                 {project.name}
               </h1>
-              <Star size={18} className="text-orange-400 fill-orange-400 cursor-pointer hover:scale-110 transition-transform" />
+              <Star
+                size={18}
+                className="text-orange-400 fill-orange-400 cursor-pointer hover:scale-110 transition-transform"
+              />
             </div>
-            <p className="text-[13px] text-gray-500 mt-1">{project.description}</p>
+            <p className="text-[13px] text-gray-500 mt-1">
+              {project.description}
+            </p>
           </div>
 
           <div className="flex items-center gap-4 mt-2">
             <div className="flex items-center">
               <div className="flex -space-x-2 mr-2">
                 {members.slice(0, 4).map((user, index) => {
-                  const initial = user.fullName ? user.fullName.charAt(0).toUpperCase() : "U";
+                  const initial = user.fullName
+                    ? user.fullName.charAt(0).toUpperCase()
+                    : "U";
                   const color = avatarColors[index % avatarColors.length];
-                  
+
                   return (
-                    <div 
-                      key={user.userId || user.id} 
-                      className={`w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-white text-[11px] font-bold shadow-sm cursor-pointer hover:-translate-y-1 transition-transform ${color}`} 
+                    <div
+                      key={user.userId || user.id}
+                      className={`w-8 h-8 rounded-full border-2 border-white flex items-center justify-center text-white text-[11px] font-bold shadow-sm cursor-pointer hover:-translate-y-1 transition-transform ${color}`}
                       title={user.fullName}
                     >
                       {initial}
@@ -117,27 +129,27 @@ const ProjectLayout = () => {
                   );
                 })}
               </div>
-              
+
               {members.length > 4 && (
                 <span className="text-[12px] text-gray-500 font-medium bg-gray-100 px-2.5 py-1 rounded-full cursor-pointer hover:bg-gray-200 transition-colors">
                   +{members.length - 4}
                 </span>
               )}
             </div>
-            
+
             {/* Gắn sự kiện onClick vào nút Thêm task */}
-            <button 
+            <button
               onClick={handleHeaderAddTask}
               className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-[13px] font-semibold flex items-center gap-1.5 transition-colors shadow-sm cursor-pointer"
             >
               <Plus size={16} strokeWidth={2.5} /> Thêm task
             </button>
-            <button className="relative p-2 text-gray-500 hover:bg-gray-50 rounded-full transition-colors border border-gray-200 shadow-sm cursor-pointer">
+            {/* <button className="relative p-2 text-gray-500 hover:bg-gray-50 rounded-full transition-colors border border-gray-200 shadow-sm cursor-pointer">
               <Bell size={18} />
               <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold w-4 h-4 flex items-center justify-center rounded-full border-2 border-white">
                 ?
               </span>
-            </button>
+            </button> */}
           </div>
         </div>
 
@@ -155,7 +167,9 @@ const ProjectLayout = () => {
               {({ isActive }) => (
                 <>
                   {tab.name}
-                  {isActive && <div className="absolute bottom-[-1px] left-0 w-full h-[2px] bg-indigo-600 rounded-t-md"></div>}
+                  {isActive && (
+                    <div className="absolute bottom-[-1px] left-0 w-full h-[2px] bg-indigo-600 rounded-t-md"></div>
+                  )}
                 </>
               )}
             </NavLink>
@@ -164,16 +178,15 @@ const ProjectLayout = () => {
       </header>
 
       <main className="flex-1 flex flex-col min-h-0 bg-[#F9FAFB] overflow-hidden">
-       <Outlet context={context} />
+        <Outlet context={context} />
       </main>
 
-      <CreateTaskPage 
-        isOpen={isCreateTaskOpen} 
-        onClose={() => setIsCreateTaskOpen(false)} 
+      <CreateTaskPage
+        isOpen={isCreateTaskOpen}
+        onClose={() => setIsCreateTaskOpen(false)}
         projectId={projectId}
-        defaultStatus="TO_DO" 
+        defaultStatus="TO_DO"
       />
-
     </div>
   );
 };

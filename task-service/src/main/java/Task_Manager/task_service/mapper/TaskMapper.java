@@ -15,6 +15,7 @@ public interface TaskMapper {
     @Mapping(target = "status", constant = "TO_DO")
     @Mapping(target = "parentTask", ignore = true)
     @Mapping(target = "subTasks", ignore = true)
+    @Mapping(target = "completedAt", ignore = true)
     @Mapping(source = "projectId", target = "project")
     @Mapping(source = "assigneeId", target = "assignee")
     @Mapping(source = "reporterId", target = "reporter")
@@ -29,6 +30,7 @@ public interface TaskMapper {
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "project", ignore = true)
     @Mapping(target = "reporter", ignore = true)
+    @Mapping(target = "completedAt", ignore = true)
     @Mapping(source = "assigneeId", target = "assignee")
     void updateEntityFromRequest(TaskRequest request, @MappingTarget Task task);
 }

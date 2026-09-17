@@ -13,4 +13,5 @@ public class NotificationResponse {
     private String type;
     private boolean read;
     private String avatar;
+    private String actorName;
 }

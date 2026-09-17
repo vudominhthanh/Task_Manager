@@ -15,7 +15,14 @@
         <option value="$PROJECT_DIR$/user-service/pom.xml" />
         <option value="$PROJECT_DIR$/activity-service/pom.xml" />
         <option value="$PROJECT_DIR$/websocket_service/pom.xml" />
+        <option value="$PROJECT_DIR$/config-repo/pom.xml" />
+        <option value="$PROJECT_DIR$/config-server/pom.xml" />
       </list>
+    </option>
+    <option name="ignoredFiles">
+      <set>
+        <option value="$PROJECT_DIR$/config-service/pom.xml" />
+      </set>
     </option>
   </component>
   <component name="ProjectRootManager" version="2" languageLevel="JDK_21" default="true" project-jdk-name="21" project-jdk-type="JavaSDK">

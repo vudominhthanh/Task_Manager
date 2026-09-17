@@ -1,26 +1,22 @@
 package Task_Manager.project_service.entity;
 
+import Task_Manager.common_lib.entity.AuditableEntity;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
+import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
 @Table(name = "projects")
 @Getter
 @Setter
+@SuperBuilder
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Project {
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
-
+public class Project  extends AuditableEntity {
     @Column(name = "name", nullable = false, length = 255)
     private String name;
 
@@ -35,12 +31,4 @@ public class Project {
 
     @Column(name = "end_date")
     private LocalDate endDate;
-
-    @CreationTimestamp
-    @Column(name = "_created_at", updatable = false)
-    private LocalDateTime createdAt;
-
-    @UpdateTimestamp
-    @Column(name = "_updated_at")
-    private LocalDateTime updatedAt;
 }

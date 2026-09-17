@@ -1,10 +1,8 @@
 package Task_Manager.notification_service.entity;
 
+import Task_Manager.common_lib.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
-
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Entity
@@ -14,11 +12,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Notification {
-    @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
-    private UUID id;
-
+public class Notification extends BaseEntity {
     @Column(name = "recipient_id", nullable = false)
     private UUID recipientId;
 
@@ -39,8 +33,4 @@ public class Notification {
 
     @Column(length = 100)
     private String project;
-
-    @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
-    private LocalDateTime createdAt;
 }

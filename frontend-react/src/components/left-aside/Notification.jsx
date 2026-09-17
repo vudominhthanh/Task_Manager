@@ -1,40 +1,23 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useEvent, EVENTS, emitEvent } from "../../hooks/useEventBus";
-import {
-  Bell,
-  CheckCircle2,
-  MessageSquare,
-  AlertTriangle,
-  Clock,
-  UserPlus,
-  FileEdit,
-  FolderKanban,
-  Check,
-  Paperclip,
-  Trash2,
-} from "lucide-react";
+import apiClient from "../../utils/apiClient";
+import { Bell, CheckCircle2, MessageSquare, AlertTriangle, Clock, UserPlus, FileEdit, FolderKanban, Check, Paperclip, Trash2, ListTodo, PlayCircle, Eye, } from "lucide-react";
 
 const Notifications = () => {
   const [activeTab, setActiveTab] = useState("all");
   const [notifications, setNotifications] = useState([]);
-
-  const token = localStorage.getItem("accessToken");
-
   const fetchNotifications = useCallback(async () => {
     try {
-      const response = await fetch("http://localhost:8082/api/notifications", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-      if (!response.ok) throw new Error("Unauthorized");
-      const data = await response.json();
+      const response = await apiClient.get(
+        "http://localhost:8082/api/notifications"
+      );
+
+      const data = response.data;
       setNotifications(data);
     } catch (err) {
       console.error("Lỗi tải thông báo:", err);
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
     fetchNotifications();
@@ -44,14 +27,9 @@ const Notifications = () => {
 
   const markAllAsRead = async () => {
     try {
-      await fetch("http://localhost:8082/api/notifications/read-all", {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-      setNotifications(prev => prev.map((n) => ({ ...n, read: true })));
+      await apiClient.patch("http://localhost:8082/api/notifications/read-all");
+
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
       emitEvent(EVENTS.NOTIFICATION);
     } catch (err) {
       console.error("Lỗi đánh dấu đã đọc tất cả:", err);
@@ -61,15 +39,11 @@ const Notifications = () => {
   const markAsRead = async (id, isRead) => {
     if (isRead) return;
     try {
-      await fetch(`http://localhost:8082/api/notifications/${id}/read`, {
-        method: "PATCH",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-      setNotifications(prev =>
-        prev.map(n => (n.id === id ? { ...n, read: true } : n))
+      await apiClient.patch(
+        `http://localhost:8082/api/notifications/${id}/read`);
+
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
       );
       emitEvent(EVENTS.NOTIFICATION);
     } catch (err) {
@@ -77,57 +51,142 @@ const Notifications = () => {
     }
   };
 
-  const getNotificationIcon = (type) => {
+  const getNotificationIcon = (type, text = "") => {
+    const textUpper = text.toUpperCase();
+
+    if (type === "TASK_STATUS_UPDATED") {
+      if (
+        textUpper.includes("CẦN LÀM") ||
+        textUpper.includes("TO_DO") ||
+        textUpper.includes("MỚI")
+      ) {
+        return {
+          icon: ListTodo,
+          color: "text-slate-500",
+          bgColor: "bg-slate-100",
+        };
+      }
+      if (
+        textUpper.includes("ĐANG THỰC HIỆN") ||
+        textUpper.includes("IN_PROGRESS")
+      ) {
+        return {
+          icon: PlayCircle,
+          color: "text-blue-500",
+          bgColor: "bg-blue-50",
+        };
+      }
+      if (textUpper.includes("CHỜ DUYỆT") || textUpper.includes("REVIEW")) {
+        return { icon: Eye, color: "text-amber-500", bgColor: "bg-amber-50" };
+      }
+      if (textUpper.includes("HOÀN THÀNH") || textUpper.includes("DONE")) {
+        return {
+          icon: CheckCircle2,
+          color: "text-emerald-500",
+          bgColor: "bg-emerald-50",
+        };
+      }
+      return {
+        icon: CheckCircle2,
+        color: "text-emerald-500",
+        bgColor: "bg-emerald-50",
+      };
+    }
+
     switch (type) {
       case "COMMENT_CREATED":
       case "COMMENT_UPDATED":
-        return { icon: MessageSquare, color: "text-blue-500", bgColor: "bg-blue-50" };
-
-      case "TASK_STATUS_UPDATED":
-        return { icon: CheckCircle2, color: "text-emerald-500", bgColor: "bg-emerald-50" };
-
+        return {
+          icon: MessageSquare,
+          color: "text-blue-500",
+          bgColor: "bg-blue-50",
+        };
       case "TASK_CREATED":
       case "SUB_TASK_CREATED":
-        return { icon: Clock, color: "text-indigo-500", bgColor: "bg-indigo-50" };
-
+        return {
+          icon: Clock,
+          color: "text-indigo-500",
+          bgColor: "bg-indigo-50",
+        };
       case "TASK_UPDATED":
-        return { icon: FileEdit, color: "text-amber-500", bgColor: "bg-amber-50" };
-
+        return {
+          icon: FileEdit,
+          color: "text-amber-500",
+          bgColor: "bg-amber-50",
+        };
       case "TASK_DELETED":
       case "COMMENT_DELETED":
         return { icon: Trash2, color: "text-red-500", bgColor: "bg-red-50" };
-
       case "MEMBER_ADDED":
       case "MEMBER_ROLE_UPDATED":
-        return { icon: UserPlus, color: "text-purple-500", bgColor: "bg-purple-50" };
-
+        return {
+          icon: UserPlus,
+          color: "text-purple-500",
+          bgColor: "bg-purple-50",
+        };
       case "PROJECT_CREATED":
       case "PROJECT_UPDATED":
-        return { icon: FolderKanban, color: "text-cyan-500", bgColor: "bg-cyan-50" };
-
+        return {
+          icon: FolderKanban,
+          color: "text-cyan-500",
+          bgColor: "bg-cyan-50",
+        };
       case "ATTACHMENT_CREATED":
-        return { icon: Paperclip, color: "text-teal-500", bgColor: "bg-teal-50" };
-
+        return {
+          icon: Paperclip,
+          color: "text-teal-500",
+          bgColor: "bg-teal-50",
+        };
       default:
         return { icon: Bell, color: "text-gray-500", bgColor: "bg-gray-50" };
     }
   };
 
+  const formatMessageText = (text) => {
+    if (!text) return "";
+    return text
+      .replace(/TO_DO/g, "Cần làm")
+      .replace(/IN_PROGRESS/g, "Đang thực hiện")
+      .replace(/REVIEW/g, "Chờ duyệt")
+      .replace(/DONE/g, "Hoàn thành")
+      .replace(/ROLE_ADMIN/g, "Quản trị viên")
+      .replace(/ROLE_USER/g, "Thành viên thường")
+      .replace(/SYS_AD/g, "Admin hệ thống")
+      .replace(/MEMBER/g, "Thành viên");
+  };
+
   const filteredNotifications = notifications.filter((noti) => {
+    const prefsStr = localStorage.getItem("notification_preferences");
+    const prefs = prefsStr
+      ? JSON.parse(prefsStr)
+      : {
+          taskAssigned: true,
+          taskStatusChanged: true,
+          commentMention: true,
+          projectActivities: true,
+        };
+
+    const type = (noti.type || "").toUpperCase();
+    if (
+      !prefs.taskAssigned &&
+      (type === "TASK_CREATED" || type === "SUB_TASK_CREATED")
+    )
+      return false;
+    if (!prefs.taskStatusChanged && type.includes("TASK_STATUS_UPDATED"))
+      return false;
+    if (!prefs.commentMention && type.includes("COMMENT")) return false;
+    if (
+      !prefs.projectActivities &&
+      (type.includes("MEMBER") || type.includes("PROJECT"))
+    )
+      return false;
+
     const isUnread = !noti.read;
     if (activeTab === "unread") return isUnread;
-
-    if (activeTab === "comments") {
-      return noti.type && noti.type.includes("COMMENT");
-    }
-
-    if (activeTab === "tasks") {
-      return noti.type && noti.type.includes("TASK");
-    }
-
-    if (activeTab === "projects") {
-      return noti.type && (noti.type.includes("MEMBER") || noti.type.includes("PROJECT"));
-    }
+    if (activeTab === "comments") return type.includes("COMMENT");
+    if (activeTab === "tasks") return type.includes("TASK");
+    if (activeTab === "projects")
+      return type.includes("MEMBER") || type.includes("PROJECT");
 
     return true;
   });
@@ -142,7 +201,8 @@ const Notifications = () => {
               Thông báo hệ thống
             </h1>
             <p className="text-[13px] text-gray-500 mt-1">
-              Quản lý và theo dõi các cập nhật mới nhất từ dự án và công việc của bạn
+              Quản lý và theo dõi các cập nhật mới nhất từ dự án và công việc
+              của bạn
             </p>
           </div>
 
@@ -186,7 +246,13 @@ const Notifications = () => {
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex flex-col">
           {filteredNotifications.map((noti, index) => {
             const isUnread = !noti.read;
-            const iconConfig = getNotificationIcon(noti.type);
+
+            // Lấy text để phân tích lấy icon
+            const notificationText = formatMessageText(
+              noti.title || noti.message,
+            );
+            // Truyền text vào getNotificationIcon
+            const iconConfig = getNotificationIcon(noti.type, notificationText);
             const IconComponent = iconConfig.icon;
 
             return (
@@ -201,16 +267,12 @@ const Notifications = () => {
               >
                 {/* AVATAR HOẶC ICON */}
                 <div className="relative shrink-0 mt-0.5">
-                  {noti.avatar && noti.avatar.length > 2 ? (
+                  {noti.avatar && noti.avatar.startsWith("http") ? (
                     <img
                       src={noti.avatar}
                       alt="Avatar"
                       className="w-10 h-10 rounded-full object-cover shadow-sm border border-gray-200"
                     />
-                  ) : noti.avatar ? (
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center text-white text-[13px] font-bold shadow-sm bg-indigo-500">
-                      {noti.avatar}
-                    </div>
                   ) : (
                     <div
                       className={`w-10 h-10 rounded-full flex items-center justify-center shadow-sm ${iconConfig.bgColor} ${iconConfig.color}`}
@@ -218,13 +280,6 @@ const Notifications = () => {
                       <IconComponent size={20} />
                     </div>
                   )}
-
-                  {/* Icon phụ nhỏ góc dưới avatar */}
-                  <div
-                    className={`absolute -bottom-1 -right-1 p-0.5 rounded-full border border-white bg-white shadow-xs ${iconConfig.color}`}
-                  >
-                    <IconComponent size={12} />
-                  </div>
 
                   {/* Chấm tròn chưa đọc */}
                   {isUnread && (
@@ -242,7 +297,7 @@ const Notifications = () => {
                           : "font-normal text-gray-700"
                       }`}
                     >
-                      {noti.title || noti.message}
+                      {notificationText}
                     </p>
                     <span className="text-[11px] text-gray-400 whitespace-nowrap shrink-0 mt-0.5">
                       {noti.time || "Vừa xong"}
