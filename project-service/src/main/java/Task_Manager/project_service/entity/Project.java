@@ -16,7 +16,11 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Project  extends AuditableEntity {
+public class Project extends AuditableEntity{
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
+
     @Column(name = "name", nullable = false, length = 255)
     private String name;
 
@@ -31,4 +35,12 @@ public class Project  extends AuditableEntity {
 
     @Column(name = "end_date")
     private LocalDate endDate;
+
+    @Column(name = "_updated_by")
+    private UUID updatedBy;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    @Builder.Default
+    private ProjectStatus status = ProjectStatus.ACTIVE;
 }

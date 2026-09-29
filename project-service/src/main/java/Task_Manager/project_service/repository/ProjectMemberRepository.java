@@ -15,10 +15,21 @@ public interface ProjectMemberRepository extends JpaRepository<ProjectMember, Pr
     Optional<ProjectMember> findByProjectIdAndUserId(UUID projectId, UUID userId);
     List<ProjectMember> findByProjectId(UUID projectId);
 
-    @Query("SELECT pm FROM ProjectMember pm WHERE pm.projectId IN " +
+    @Query("SELECT pm FROM ProjectMember pm JOIN pm.projectRole pr WHERE pm.projectId IN " +
             "(SELECT p.id FROM Project p LEFT JOIN ProjectMember m ON p.id = m.projectId " +
             "WHERE p.ownerId = :currentUserId OR m.userId = :currentUserId)")
     List<ProjectMember> findAllMembersInMyProjects(@Param("currentUserId") UUID currentUserId);
 
-    boolean existsByProjectIdAndUserIdAndProjectRoleIn(UUID projectId, UUID ownerId, List<ProjectRole> projectRoles);
+    @Query("SELECT CASE WHEN COUNT(pm) > 0 THEN true ELSE false END " +
+            "FROM ProjectMember pm " +
+            "JOIN pm.projectRole pr " +
+            "LEFT JOIN pr.permissions p " +
+            "WHERE pm.projectId = :projectId " +
+            "AND pm.userId = :userId " +
+            "AND (pr.name = 'ADMIN' OR p.name = :permission)")
+    boolean hasProjectPermission(@Param("projectId") UUID projectId,
+                                 @Param("userId") UUID userId,
+                                 @Param("permission") String permission);
+
+    boolean existsByProjectIdAndUserIdAndProjectRole_NameIn(UUID projectId, UUID userId, List<String> roleNames);
 }

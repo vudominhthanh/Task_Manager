@@ -8,13 +8,15 @@ import java.util.List;
 import java.util.UUID;
 
 public interface AttachmentService {
-    AttachmentResponse uploadAttachment(UUID taskId, UUID userId, MultipartFile file, boolean isSystemAdmin) throws IOException;
+    AttachmentResponse uploadAttachment(UUID taskId, UUID userId, MultipartFile file) throws IOException;
 
-    void deleteAttachment(UUID attachmentId, UUID userId, boolean isSystemAdmin);
+    void deleteAttachment(UUID attachmentId, UUID userId);
 
     List<AttachmentResponse> getAttachmentsByTaskId(UUID taskId);
 
     AttachmentResponse getAttachmentById(UUID attachmentId);
 
     byte[] getAttachmentBytes(UUID attachmentId) throws IOException;
+
+    byte[] getAttachmentBytes(UUID attachmentId, UUID userId) throws IOException;
 }

@@ -3,11 +3,12 @@ package Task_Manager.activity_service.entity;
 import Task_Manager.common_lib.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
-import org.hibernate.annotations.CreationTimestamp;
+import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
-import java.time.LocalDateTime;
+
 import java.util.Map;
+import java.util.UUID;
 
 @Entity
 @Table(name = "activities")
@@ -15,8 +16,12 @@ import java.util.Map;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-public class Activity extends BaseEntity {
+@SuperBuilder
+public class Activity extends BaseEntity{
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
+
     @Column(name = "target_type")
     private String targetType;
 

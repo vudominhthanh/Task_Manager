@@ -6,6 +6,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Entity
@@ -31,4 +32,16 @@ public class UserPerformanceStats {
     @Builder.Default
     @Column(name = "tasks_overdue")
     private Integer tasksOverdue = 0;
+
+    @Column(name = "performance_points", precision = 10, scale = 2)
+    private BigDecimal performancePoints;
+
+    @Column(name = "tasks_completed_early")
+    private Integer tasksCompletedEarly;
+
+    @Column(name = "total_estimated_effort", precision = 10, scale = 2)
+    private BigDecimal totalEstimatedEffort;
+
+    @Column(name = "total_actual_effort", precision = 10, scale = 2)
+    private BigDecimal totalActualEffort;
 }

@@ -1,6 +1,8 @@
 package Task_Manager.activity_service.repository;
 
 import Task_Manager.activity_service.entity.Activity;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
@@ -12,9 +14,12 @@ public interface ActivityRepository extends JpaRepository<Activity, String>, Jpa
 
     List<Activity> findByProjectIdOrderByCreatedAtDesc(String projectId);
 
+    Page<Activity> findByProjectIdOrderByCreatedAtDesc(String projectId, Pageable pageable);
+
     List<Activity> findByUserIdOrderByCreatedAtDesc(String userId);
 
     List<Activity> findByTargetIdOrderByCreatedAtDesc(String targetId);
+
     List<Activity> findTop5ByUserIdOrderByCreatedAtDesc(String userId);
 
 

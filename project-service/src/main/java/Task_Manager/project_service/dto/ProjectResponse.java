@@ -7,6 +7,8 @@ import java.time.LocalDate;
 import java.time.ZonedDateTime;
 import java.util.UUID;
 
+import Task_Manager.project_service.entity.ProjectStatus;
+
 @Data
 @Builder
 public class ProjectResponse {
@@ -16,4 +18,5 @@ public class ProjectResponse {
     private UUID ownerId;
     private LocalDate startDate;
     private LocalDate endDate;
+    private ProjectStatus status;
 }

@@ -7,16 +7,15 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 @Repository
 public interface CommentRepository extends JpaRepository<Comment, UUID> {
-    @Query("SELECT c FROM Comment c JOIN FETCH c.task WHERE c.id = :id")
-    Optional<Comment> findByIdWithTask(@Param("id") UUID id);
 
     List<Comment> findByTaskId(UUID taskId);
 
-    @Query("SELECT c.task.id, COUNT(c.id) FROM Comment c WHERE c.task.id IN :taskIds GROUP BY c.task.id")
+    @Query("SELECT c.taskId, COUNT(c.id) FROM Comment c WHERE c.taskId IN :taskIds GROUP BY c.taskId")
     List<Object[]> countCommentsByTaskIds(@Param("taskIds") List<UUID> taskIds);
+
+    List<Comment> findByProjectIdAndTaskIdIsNull(UUID projectId);
 }

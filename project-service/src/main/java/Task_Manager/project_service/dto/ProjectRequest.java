@@ -1,5 +1,7 @@
 package Task_Manager.project_service.dto;
 
+import Task_Manager.project_service.entity.ProjectStatus;
+
 import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
@@ -16,4 +18,6 @@ public class ProjectRequest {
     private LocalDate startDate;
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd")
     private LocalDate endDate;
+
+    private ProjectStatus status;
 }

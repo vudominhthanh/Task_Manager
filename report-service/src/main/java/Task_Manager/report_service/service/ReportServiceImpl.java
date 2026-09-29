@@ -213,8 +213,9 @@ public class ReportServiceImpl implements ReportService {
 
         for (ReportResponse.ProjectMemberDto member : uniqueMembers.values()) {
             UUID uId = member.getUserId();
+
             List<ReportResponse.TaskDto> userTasks = tasks.stream()
-                    .filter(t -> uId.equals(t.getAssigneeId()))
+                    .filter(t -> uId != null && uId.equals(t.getAssigneeId()))
                     .toList();
 
             int total = userTasks.size();
@@ -224,7 +225,19 @@ public class ReportServiceImpl implements ReportService {
                     .filter(t -> isTaskOverdue(t, today))
                     .count();
 
-            int efficiency = total == 0 ? 0 : (done * 100 / total);
+            int efficiency = calculateMemberEfficiencyScore(userTasks, today);
+
+            BigDecimal memberEstimated = BigDecimal.ZERO;
+            BigDecimal memberActual = BigDecimal.ZERO;
+
+            for (ReportResponse.TaskDto t : userTasks) {
+                if (t.getEstimatedEffort() != null) {
+                    memberEstimated = memberEstimated.add(t.getEstimatedEffort());
+                }
+                if (t.getActualEffort() != null) {
+                    memberActual = memberActual.add(t.getActualEffort());
+                }
+            }
 
             result.add(TeamPerformanceDto.builder()
                     .id(uId)
@@ -235,11 +248,53 @@ public class ReportServiceImpl implements ReportService {
                     .done(done)
                     .overdue(overdue)
                     .efficiency(efficiency)
+                    .totalEstimatedEffort(memberEstimated)
+                    .totalActualEffort(memberActual)
                     .build());
         }
 
         result.sort((a, b) -> Integer.compare(b.getEfficiency(), a.getEfficiency()));
         return result;
+    }
+
+    private int calculateMemberEfficiencyScore(List<ReportResponse.TaskDto> tasks, LocalDate today) {
+        if (tasks == null || tasks.isEmpty()) return 0;
+
+        double totalMaxScore = 0.0;
+        double totalEarnedScore = 0.0;
+
+        for (ReportResponse.TaskDto task : tasks) {
+            double effortWeight = (task.getEstimatedEffort() != null && task.getEstimatedEffort().doubleValue() > 0)
+                    ? task.getEstimatedEffort().doubleValue() : 1.0;
+
+            double maxTaskScore = 100.0 * effortWeight;
+            totalMaxScore += maxTaskScore;
+
+            if (isTaskDone(task)) {
+                LocalDate completedDate = task.getCompletedAt() != null
+                        ? task.getCompletedAt().toLocalDate() : today;
+
+                if (task.getDueDate() == null || !completedDate.isAfter(task.getDueDate())) {
+                    double effortMultiplier = 1.0;
+                    if (task.getActualEffort() != null && task.getEstimatedEffort() != null
+                            && task.getActualEffort().compareTo(task.getEstimatedEffort()) > 0) {
+                        effortMultiplier = 0.9;
+                    }
+                    totalEarnedScore += (maxTaskScore * effortMultiplier);
+                } else {
+                    totalEarnedScore += (maxTaskScore * 0.6);
+                }
+            } else {
+                if (isTaskOverdue(task, today)) {
+                    totalEarnedScore -= (maxTaskScore * 0.2);
+                }
+            }
+        }
+
+        if (totalMaxScore <= 0) return 0;
+
+        int finalScore = (int) Math.round((totalEarnedScore / totalMaxScore) * 100);
+        return Math.max(0, Math.min(100, finalScore)); // Giữ thang điểm [0 - 100]
     }
 
     @Override

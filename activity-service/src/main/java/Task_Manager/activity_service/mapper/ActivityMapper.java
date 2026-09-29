@@ -16,6 +16,7 @@ import java.util.UUID;
 @Mapper(componentModel = "spring")
 public interface ActivityMapper {
 
+    @Mapping(target = "id", ignore = true)
     @Mapping(source = "targetType", target = "targetType")
     @Mapping(source = "event", target = "targetId", qualifiedByName = "resolveTargetId")
     @Mapping(source = "actionType", target = "actionType")

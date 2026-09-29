@@ -12,7 +12,11 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class Notification extends BaseEntity {
+public class Notification extends BaseEntity{
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
+
     @Column(name = "recipient_id", nullable = false)
     private UUID recipientId;
 

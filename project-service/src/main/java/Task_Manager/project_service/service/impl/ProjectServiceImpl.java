@@ -1,24 +1,23 @@
 package Task_Manager.project_service.service.impl;
 
+import Task_Manager.project_service.client.TaskClient;
 import Task_Manager.project_service.client.UserClient;
-import Task_Manager.project_service.dto.ProjectRequest;
-import Task_Manager.project_service.dto.ProjectResponse;
-import Task_Manager.project_service.dto.UserDto;
+import Task_Manager.common_lib.constant.ProjectPermissions;
+import Task_Manager.project_service.dto.*;
 import Task_Manager.project_service.entity.Project;
-import Task_Manager.project_service.entity.ProjectRole;
+import Task_Manager.project_service.entity.ProjectMember;
+import Task_Manager.project_service.entity.ProjectStatus;
 import Task_Manager.project_service.kafka.ProjectEventPublisher;
 import Task_Manager.project_service.mapper.ProjectMapper;
 import Task_Manager.project_service.repository.ProjectMemberRepository;
 import Task_Manager.project_service.repository.ProjectRepository;
 import Task_Manager.project_service.service.ProjectService;
 
-// Import các Exception và Translator chuẩn Enterprise
 import Task_Manager.common_lib.exception.ResourceNotFoundException;
 import Task_Manager.common_lib.exception.ForbiddenAccessException;
-import Task_Manager.common_lib.exception.BusinessRuleException;
 import Task_Manager.common_lib.utils.Translator;
-
 import Task_Manager.project_service.specification.ProjectSpecification;
+
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -29,7 +28,6 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -42,6 +40,7 @@ public class ProjectServiceImpl implements ProjectService {
     private final ProjectEventPublisher projectEventPublisher;
     private final ProjectMemberRepository projectMemberRepository;
     private final UserClient userClient;
+    private final TaskClient taskClient;
     private final ProjectMapper projectMapper;
 
     @Override
@@ -58,23 +57,17 @@ public class ProjectServiceImpl implements ProjectService {
 
         UserActionInfo userInfo = fetchUserActionInfo(ownerId);
 
-        projectEventPublisher.publishProjectCreated(savedProject.getId(), Map.of(
-                "projectId", savedProject.getId(),
-                "project", response,
-                "createdBy", ownerId,
-                "username", userInfo.getName(),
-                "userAvatar", userInfo.getAvatar(),
-                "projectName", response.getName(),
-                "targetName", response.getName()
-        ));
+        ProjectEventDto event = projectMapper.toProjectCreatedEvent(
+                savedProject.getId(), response, ownerId, userInfo.getName(), userInfo.getAvatar()
+        );
+        projectEventPublisher.publishProjectCreated(savedProject.getId(), event);
 
         return response;
     }
 
     @Override
-    public ProjectResponse updateProject(UUID id, ProjectRequest request, UUID currentUserId, boolean isSystemAdmin) {
+    public ProjectResponse updateProject(UUID id, ProjectRequest request, UUID currentUserId) {
         Project project = findProjectOrThrow(id);
-        validateManagePermission(project, currentUserId, isSystemAdmin);
 
         projectMapper.updateEnityFromRequest(request, project);
         Project updatedProject = projectRepository.save(project);
@@ -82,35 +75,26 @@ public class ProjectServiceImpl implements ProjectService {
 
         UserActionInfo userInfo = fetchUserActionInfo(currentUserId);
 
-        projectEventPublisher.publishProjectUpdated(updatedProject.getId(), Map.of(
-                "projectId", project.getId(),
-                "project", response,
-                "updatedBy", currentUserId,
-                "username", userInfo.getName(),
-                "userAvatar", userInfo.getAvatar(),
-                "projectName", response.getName(),
-                "targetName", response.getName()
-        ));
+        ProjectEventDto event = projectMapper.toProjectUpdatedEvent(
+                updatedProject.getId(), response, currentUserId, userInfo.getName(), userInfo.getAvatar()
+        );
+        projectEventPublisher.publishProjectUpdated(updatedProject.getId(), event);
 
         return response;
     }
 
     @Override
-    public void deleteProject(UUID id, UUID currentUserId, boolean isSystemAdmin) {
+    public void deleteProject(UUID id, UUID currentUserId) {
         Project project = findProjectOrThrow(id);
-        validateManagePermission(project, currentUserId, isSystemAdmin);
 
         projectRepository.delete(project);
 
         UserActionInfo userInfo = fetchUserActionInfo(currentUserId);
 
-        projectEventPublisher.publishProjectDeleted(project.getId(), Map.of(
-                "projectId", project.getId(),
-                "deletedBy", currentUserId,
-                "username", userInfo.getName(),
-                "projectName", project.getName(),
-                "targetName", project.getName()
-        ));
+        ProjectEventDto event = projectMapper.toProjectDeletedEvent(
+                project.getId(), project.getName(), currentUserId, userInfo.getName()
+        );
+        projectEventPublisher.publishProjectDeleted(project.getId(), event);
     }
 
     @Override
@@ -134,7 +118,6 @@ public class ProjectServiceImpl implements ProjectService {
     @Override
     public Page<ProjectResponse> getProjects(UUID currentUserId, String keyword, Pageable pageable) {
         Specification<Project> spec = ProjectSpecification.getInvolvedProjects(currentUserId, keyword);
-
         return projectRepository.findAll(spec, pageable).map(projectMapper::toResponse);
     }
 
@@ -163,11 +146,42 @@ public class ProjectServiceImpl implements ProjectService {
                     if (project.getOwnerId() != null && project.getOwnerId().equals(userId)) {
                         return true;
                     }
-                    return projectMemberRepository.existsByProjectIdAndUserIdAndProjectRoleIn(
-                            projectId, userId, List.of(ProjectRole.ADMIN)
+                    return projectMemberRepository.existsByProjectIdAndUserIdAndProjectRole_NameIn(
+                            projectId, userId, List.of("ADMIN")
                     );
                 })
                 .orElse(false);
+    }
+
+    @Override
+    public ProjectResponse updateProjectStatus(UUID id, ProjectStatus newStatus, UUID currentUserId) {
+        Project project = projectRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Project not found"));
+
+        project.setStatus(newStatus);
+        project = projectRepository.save(project);
+
+
+        return projectMapper.toResponse(project);
+    }
+
+    @Override
+    public void autoCompleteProjectIfAllTasksDone(UUID projectId) {
+        Project project = projectRepository.findById(projectId).orElse(null);
+        if (project == null || project.getStatus() == ProjectStatus.COMPLETED) {
+            return;
+        }
+
+        try {
+            TaskStatisticsDto stats = taskClient.getTaskStatistics(projectId);
+
+            if (stats.totalTasks() > 0 && stats.totalTasks() == stats.completedTasks()) {
+                project.setStatus(ProjectStatus.COMPLETED);
+                projectRepository.save(project);
+            }
+        } catch (Exception e) {
+            System.err.println("Lỗi khi kiểm tra task của project: " + e.getMessage());
+        }
     }
 
     private Project findProjectOrThrow(UUID id) {
@@ -175,20 +189,6 @@ public class ProjectServiceImpl implements ProjectService {
                 .orElseThrow(() -> new ResourceNotFoundException(
                         Translator.toLocale("error.project.not_found", id)
                 ));
-    }
-
-    private void validateManagePermission(Project project, UUID currentUserId, boolean isSystemAdmin) {
-        if (isSystemAdmin || project.getOwnerId().equals(currentUserId)) {
-            return;
-        }
-
-        boolean isProjectAdmin = projectMemberRepository.existsByProjectIdAndUserIdAndProjectRoleIn(
-                project.getId(), currentUserId, List.of(ProjectRole.ADMIN)
-        );
-
-        if (!isProjectAdmin) {
-            throw new ForbiddenAccessException(Translator.toLocale("error.project.access_denied"));
-        }
     }
 
     private UserActionInfo fetchUserActionInfo(UUID userId) {

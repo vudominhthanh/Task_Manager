@@ -77,7 +77,6 @@ public class ActivityConsumer {
             String projectName = getFirstText(payload, "projectName");
             if ("UNKNOWN".equals(projectName)) projectName = "Dự án";
 
-            // Tên thực thể hiển thị (ví dụ tên file, tên công việc)
             String targetName = getFirstText(payload, "targetName");
             if ("UNKNOWN".equals(targetName) && "ATTACHMENT".equals(targetType)) {
                 targetName = getFirstText(payload.path("attachment"), "fileName");

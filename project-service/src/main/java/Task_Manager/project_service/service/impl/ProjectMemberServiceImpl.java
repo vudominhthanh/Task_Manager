@@ -1,6 +1,7 @@
 package Task_Manager.project_service.service.impl;
 
 import Task_Manager.project_service.client.UserClient;
+import Task_Manager.project_service.dto.ProjectMemberEventDto;
 import Task_Manager.project_service.dto.ProjectMemberRequest;
 import Task_Manager.project_service.dto.ProjectMemberResponse;
 import Task_Manager.project_service.dto.UserDto;
@@ -11,6 +12,7 @@ import Task_Manager.project_service.kafka.ProjectEventPublisher;
 import Task_Manager.project_service.mapper.ProjectMemberMapper;
 import Task_Manager.project_service.repository.ProjectMemberRepository;
 import Task_Manager.project_service.repository.ProjectRepository;
+import Task_Manager.project_service.repository.ProjectRoleRepository;
 import Task_Manager.project_service.service.ProjectMemberService;
 
 import Task_Manager.common_lib.exception.ResourceNotFoundException;
@@ -39,11 +41,11 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
     private final ProjectMemberMapper projectMemberMapper;
     private final ProjectEventPublisher projectEventPublisher;
     private final UserClient userClient;
+    private final ProjectRoleRepository projectRoleRepository;
 
     @Override
-    public void addMember(UUID projectId, ProjectMemberRequest projectMemberRequest, UUID currentUserId, boolean isSystemAdmin) {
+    public void addMember(UUID projectId, ProjectMemberRequest projectMemberRequest, UUID currentUserId) {
         Project project = findProjectOrThrow(projectId);
-        validateAdminPermission(project, currentUserId, isSystemAdmin);
 
         if (projectMemberRequest.getEmail() == null || projectMemberRequest.getEmail().trim().isEmpty()) {
             throw new BusinessRuleException(Translator.toLocale("error.member.email_empty"));
@@ -56,7 +58,11 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
             throw new BusinessRuleException(Translator.toLocale("error.member.already_exists"));
         }
 
-        ProjectRole role = projectMemberRequest.getProjectRole() != null ? projectMemberRequest.getProjectRole() : ProjectRole.MEMBER;
+        String roleName = projectMemberRequest.getRoleName() != null ? projectMemberRequest.getRoleName() : "MEMBER";
+        ProjectRole role = projectRoleRepository.findByNameAndProjectId(roleName, projectId)
+                .orElseGet(() -> projectRoleRepository.findByNameAndProjectIdIsNull(roleName)
+                        .filter(r -> !r.isCustom())
+                        .orElseThrow(() -> new BusinessRuleException("Role không hợp lệ")));
 
         ProjectMember projectMember = ProjectMember.builder()
                 .projectId(projectId)
@@ -64,26 +70,30 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
                 .projectRole(role)
                 .build();
 
+        if ("ADMIN".equalsIgnoreCase(role.getName())) {
+            boolean isOwner = project.getOwnerId() != null && project.getOwnerId().equals(currentUserId);
+            boolean isCurrentAdmin = projectMemberRepository.existsByProjectIdAndUserIdAndProjectRole_NameIn(
+                    projectId, currentUserId, List.of("ADMIN"));
+
+            if (!isOwner && !isCurrentAdmin) {
+                throw new ForbiddenAccessException("Chỉ Quản trị viên dự án mới có quyền cấp vai trò ADMIN cho người khác!");
+            }
+        }
+
         projectMemberRepository.save(projectMember);
 
         String actorName = fetchUserName(currentUserId);
         String targetName = resolveFullName(targetUser);
 
-        projectEventPublisher.publishMemberAdded(projectId, Map.of(
-                "projectId", projectId,
-                "addedUserId", targetUserId,
-                "role", role,
-                "addedBy", currentUserId,
-                "username", actorName,
-                "projectName", project.getName(),
-                "targetName", targetName
-        ));
+        ProjectMemberEventDto event = projectMemberMapper.toMemberAddedEvent(
+                project, currentUserId, actorName, targetUserId, targetName, role.getName()
+        );
+        projectEventPublisher.publishMemberAdded(projectId, event);
     }
 
     @Override
-    public void removeMember(UUID projectId, UUID targetID, UUID currentUserId, boolean isSystemAdmin) {
+    public void removeMember(UUID projectId, UUID targetID, UUID currentUserId) {
         Project project = findProjectOrThrow(projectId);
-        validateAdminPermission(project, currentUserId, isSystemAdmin);
 
         ProjectMember member = projectMemberRepository.findByProjectIdAndUserId(projectId, targetID)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.toLocale("error.member.not_found")));
@@ -97,39 +107,45 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
         String actorName = fetchUserName(currentUserId);
         String targetName = fetchUserName(targetID);
 
-        projectEventPublisher.publishMemberRemoved(projectId, Map.of(
-                "projectId", projectId,
-                "removedUserId", targetID,
-                "removedBy", currentUserId,
-                "username", actorName,
-                "projectName", project.getName(),
-                "targetName", targetName
-        ));
+        ProjectMemberEventDto event = projectMemberMapper.toMemberRemovedEvent(
+                project, currentUserId, actorName, targetID, targetName
+        );
+        projectEventPublisher.publishMemberRemoved(projectId, event);
     }
 
     @Override
-    public void updateMemberRole(UUID projectId, UUID targetUserId, String newRole, UUID currentUserId, boolean isSystemAdmin) {
+    public void updateMemberRole(UUID projectId, UUID targetUserId, String newRole, UUID currentUserId) {
         Project project = findProjectOrThrow(projectId);
-        validateAdminPermission(project, currentUserId, isSystemAdmin);
 
         ProjectMember member = projectMemberRepository.findByProjectIdAndUserId(projectId, targetUserId)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.toLocale("error.member.not_found")));
 
-        member.setProjectRole(ProjectRole.valueOf(newRole));
+        ProjectRole role = projectRoleRepository.findByNameAndProjectId(newRole, projectId)
+                .orElseGet(() -> projectRoleRepository.findByNameAndProjectIdIsNull(newRole)
+                        .filter(r -> !r.isCustom())
+                        .orElseThrow(() -> new BusinessRuleException("Role không hợp lệ")));
+
+        member.setProjectRole(role);
+
+        if ("ADMIN".equalsIgnoreCase(role.getName())) {
+            boolean isOwner = project.getOwnerId() != null && project.getOwnerId().equals(currentUserId);
+            boolean isCurrentAdmin = projectMemberRepository.existsByProjectIdAndUserIdAndProjectRole_NameIn(
+                    projectId, currentUserId, List.of("ADMIN"));
+
+            if (!isOwner && !isCurrentAdmin) {
+                throw new ForbiddenAccessException("Chỉ Quản trị viên dự án mới có quyền cấp vai trò ADMIN cho người khác!");
+            }
+        }
+
         projectMemberRepository.save(member);
 
         String actorName = fetchUserName(currentUserId);
         String targetName = fetchUserName(targetUserId);
 
-        projectEventPublisher.publishMemberRoleUpdated(projectId, Map.of(
-                "projectId", projectId,
-                "updatedUserId", targetUserId,
-                "newRole", newRole,
-                "updatedBy", currentUserId,
-                "username", actorName,
-                "projectName", project.getName(),
-                "targetName", targetName
-        ));
+        ProjectMemberEventDto event = projectMemberMapper.toMemberRoleUpdatedEvent(
+                project, currentUserId, actorName, targetUserId, targetName, role.getName()
+        );
+        projectEventPublisher.publishMemberRoleUpdated(projectId, event);
     }
 
     @Override
@@ -139,7 +155,7 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
         if (project != null && project.getOwnerId() != null && project.getOwnerId().equals(userId)) {
             return true;
         }
-        return projectMemberRepository.existsByProjectIdAndUserIdAndProjectRoleIn(projectId, userId, List.of(ProjectRole.ADMIN));
+        return projectMemberRepository.existsByProjectIdAndUserIdAndProjectRole_NameIn(projectId, userId, List.of("ADMIN"));
     }
 
     @Override
@@ -150,10 +166,14 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
         if (project.getOwnerId() != null) {
             boolean ownerExists = members.stream().anyMatch(m -> m.getUserId().equals(project.getOwnerId()));
             if (!ownerExists) {
+                ProjectRole adminRole = projectRoleRepository.findByNameAndProjectIdIsNull("ADMIN")
+                        .orElseGet(() -> ProjectRole.builder().name("ADMIN").build());
+
+
                 ProjectMember ownerMember = ProjectMember.builder()
                         .projectId(projectId)
                         .userId(project.getOwnerId())
-                        .projectRole(ProjectRole.ADMIN)
+                        .projectRole(adminRole)
                         .build();
                 members = new ArrayList<>(members);
                 members.add(ownerMember);
@@ -172,17 +192,6 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
     private Project findProjectOrThrow(UUID id) {
         return projectRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.toLocale("error.project.not_found", id)));
-    }
-
-    private void validateAdminPermission(Project project, UUID currentUserId, boolean isSystemAdmin) {
-        if (isSystemAdmin || project.getOwnerId().equals(currentUserId)) return;
-
-        ProjectMember member = projectMemberRepository.findByProjectIdAndUserId(project.getId(), currentUserId)
-                .orElseThrow(() -> new ForbiddenAccessException(Translator.toLocale("error.member.permission_denied")));
-
-        if (member.getProjectRole() != ProjectRole.ADMIN) {
-            throw new ForbiddenAccessException(Translator.toLocale("error.member.admin_required"));
-        }
     }
 
     private UserDto fetchUserByEmailOrThrow(String email) {
@@ -233,13 +242,17 @@ public class ProjectMemberServiceImpl implements ProjectMemberService {
         Map<UUID, String> emailMap = userResponses.stream()
                 .collect(Collectors.toMap(ProjectMemberResponse::getUserId, ProjectMemberResponse::getEmail, (existing, replacement) -> existing));
 
+
         return members.stream()
                 .distinct()
                 .map(member -> {
                     ProjectMemberResponse response = projectMemberMapper.toResponse(member);
                     response.setFullName(fullNameMap.get(member.getUserId()));
                     response.setEmail(emailMap.get(member.getUserId()));
-                    response.setRole(member.getProjectRole().name());
+                    String roleName = (member.getProjectRole() != null && member.getProjectRole().getName() != null)
+                            ? member.getProjectRole().getName()
+                            : "MEMBER";
+                    response.setRole(roleName);
                     return response;
                 })
                 .collect(Collectors.toList());

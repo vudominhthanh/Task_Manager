@@ -1,11 +1,13 @@
 package Task_Manager.task_service.service.impl;
 
+import Task_Manager.common_lib.constant.ProjectPermissions;
+import Task_Manager.common_lib.exception.BusinessRuleException;
+import Task_Manager.common_lib.exception.ForbiddenAccessException;
+import Task_Manager.common_lib.exception.ResourceNotFoundException;
+import Task_Manager.common_lib.utils.Translator;
 import Task_Manager.task_service.client.ProjectClient;
 import Task_Manager.task_service.client.UserClient;
-import Task_Manager.task_service.dto.ProjectDto;
-import Task_Manager.task_service.dto.TaskRequest;
-import Task_Manager.task_service.dto.TaskResponse;
-import Task_Manager.task_service.dto.UserDto;
+import Task_Manager.task_service.dto.*;
 import Task_Manager.task_service.entity.Task;
 import Task_Manager.task_service.entity.TaskPriority;
 import Task_Manager.task_service.entity.TaskStatus;
@@ -15,18 +17,14 @@ import Task_Manager.task_service.repository.AttachmentRepository;
 import Task_Manager.task_service.repository.CommentRepository;
 import Task_Manager.task_service.repository.TaskRepository;
 import Task_Manager.task_service.service.TaskService;
-
-import Task_Manager.common_lib.exception.ResourceNotFoundException;
-import Task_Manager.common_lib.exception.ForbiddenAccessException;
-import Task_Manager.common_lib.exception.BusinessRuleException;
-import Task_Manager.common_lib.utils.Translator;
-
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -43,11 +41,12 @@ public class TaskServiceImpl implements TaskService {
     private final TaskEventPublisher taskEventPublisher;
     private final CommentRepository commentRepository;
     private final AttachmentRepository attachmentRepository;
+    private final TaskProgressEngine taskProgressEngine;
 
     @Override
-    public TaskResponse createTask(TaskRequest taskRequest, UUID userId, boolean isSystemAdmin) {
+    @Transactional
+    public TaskResponse createTask(TaskRequest taskRequest, UUID userId) {
         validateCrossService(taskRequest.getProjectId(), userId, taskRequest.getAssigneeId());
-        validateCreatePermission(taskRequest.getProjectId(), userId, isSystemAdmin);
 
         Task task = taskMapper.toEntity(taskRequest);
         task.setReporter(userId);
@@ -61,10 +60,11 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
-    public TaskResponse createSubTask(UUID parentTaskId, TaskRequest taskRequest, UUID userId, boolean isSystemAdmin) {
+    @Transactional
+    public TaskResponse createSubTask(UUID parentTaskId, TaskRequest taskRequest, UUID userId) {
         Task parentTask = findTaskOrThrow(parentTaskId);
+        validateTaskOwnership(parentTask, userId, "CREATE_SUBTASK");
         validateCrossService(parentTask.getProject(), userId, taskRequest.getAssigneeId());
-        validateSubTaskCreatePermission(parentTask, userId, isSystemAdmin);
 
         Task subTask = taskMapper.toEntity(taskRequest);
         subTask.setProject(parentTask.getProject());
@@ -73,6 +73,11 @@ public class TaskServiceImpl implements TaskService {
         if (subTask.getPriority() == null) subTask.setPriority(TaskPriority.MEDIUM);
 
         Task savedTask = taskRepository.save(subTask);
+
+        List<Task> subTasks = taskRepository.findByParentTaskId(parentTask.getId());
+        taskProgressEngine.calculateRollupMetrics(parentTask, subTasks);
+        taskRepository.save(parentTask);
+
         TaskResponse enriched = enrichSingleTask(taskMapper.toResponse(savedTask));
 
         publishTaskEvent("SUB_CREATED", savedTask, enriched, userId, null);
@@ -80,22 +85,30 @@ public class TaskServiceImpl implements TaskService {
     }
 
     @Override
-    public TaskResponse updateTask(UUID id, TaskRequest taskRequest, UUID userId, boolean isSystemAdmin) {
+    @Transactional
+    public TaskResponse updateTask(UUID id, TaskRequest taskRequest, UUID userId) {
         Task task = findTaskOrThrow(id);
-        validateUpdatePermission(task, taskRequest, userId, isSystemAdmin);
+        validateTaskOwnership(task, userId, "UPDATE");
 
         taskMapper.updateEntityFromRequest(taskRequest, task);
         Task savedTask = taskRepository.save(task);
-        TaskResponse enriched = enrichSingleTask(taskMapper.toResponse(savedTask));
 
+        if (savedTask.getParentTask() != null) {
+            List<Task> subTasks = taskRepository.findByParentTaskId(savedTask.getParentTask().getId());
+            taskProgressEngine.calculateRollupMetrics(savedTask.getParentTask(), subTasks);
+            taskRepository.save(savedTask.getParentTask());
+        }
+
+        TaskResponse enriched = enrichSingleTask(taskMapper.toResponse(savedTask));
         publishTaskEvent("UPDATED", savedTask, enriched, userId, null);
         return enriched;
     }
 
     @Override
-    public TaskResponse updateTaskStatus(UUID id, TaskRequest taskRequest, UUID userId, boolean isSystemAdmin) {
+    @Transactional
+    public TaskResponse updateTaskStatus(UUID id, TaskRequest taskRequest, UUID userId) {
         Task task = findTaskOrThrow(id);
-        validateStatusUpdatePermission(task, userId, isSystemAdmin);
+        validateTaskOwnership(task, userId, "UPDATE");
 
         if (task.getParentTask() == null && taskRequest.getStatus() == TaskStatus.DONE) {
             List<Task> subTasks = taskRepository.findByParentTaskId(id);
@@ -110,6 +123,7 @@ public class TaskServiceImpl implements TaskService {
         task.setStatus(taskRequest.getStatus());
 
         if (taskRequest.getStatus() == TaskStatus.DONE) {
+            task.setCompletionPercentage(BigDecimal.valueOf(100.00));
             if (task.getCompletedAt() == null) {
                 task.setCompletedAt(LocalDateTime.now());
             }
@@ -120,42 +134,51 @@ public class TaskServiceImpl implements TaskService {
         Task savedTask = taskRepository.save(task);
 
         if (savedTask.getParentTask() != null) {
-            syncParentTaskStatus(savedTask.getParentTask());
+            Task parent = savedTask.getParentTask();
+            List<Task> subTasks = taskRepository.findByParentTaskId(parent.getId());
+            taskProgressEngine.calculateRollupMetrics(parent, subTasks);
+            taskProgressEngine.evaluateParentStatusSync(parent, subTasks);
+            taskRepository.save(parent);
         }
 
         TaskResponse enriched = enrichSingleTask(taskMapper.toResponse(savedTask));
-
         publishTaskEvent("STATUS_UPDATED", savedTask, enriched, userId, oldStatus);
         return enriched;
     }
 
     @Override
-    public void deleteTask(UUID id, UUID userId, boolean isSystemAdmin) {
+    @Transactional
+    public void deleteTask(UUID id, UUID userId) {
         Task task = findTaskOrThrow(id);
-        validateDeletePermission(task, userId, isSystemAdmin);
+        validateTaskOwnership(task, userId, "DELETE");
 
-        String projectName = fetchProjectName(task.getProject());
-        ActorInfo actor = fetchActorDetails(userId);
-        String status = task.getStatus() != null ? task.getStatus().name() : "TO_DO";
-        UUID projectId = task.getProject();
-
+        Task parent = task.getParentTask();
         taskRepository.deleteById(id);
 
-        taskEventPublisher.publishTaskDeleted(id, Map.of(
-                "taskId", id,
-                "status", status,
-                "projectId", projectId != null ? projectId.toString() : "",
-                "projectName", projectName,
-                "targetName", task.getTitle() != null ? task.getTitle() : "Task",
-                "createdBy", userId,
-                "username", actor.getName(),
-                "userAvatar", actor.getAvatar()
-        ));
+        if (parent != null) {
+            List<Task> remainingSubTasks = taskRepository.findByParentTaskId(parent.getId());
+            taskProgressEngine.calculateRollupMetrics(parent, remainingSubTasks);
+            taskProgressEngine.evaluateParentStatusSync(parent, remainingSubTasks);
+            taskRepository.save(parent);
+        }
     }
 
     @Override
     public List<TaskResponse> getTaskByProjectId(UUID projectId) {
-        List<TaskResponse> responses = taskRepository.findByProjectId(projectId).stream()
+        List<TaskResponse> responses = taskRepository.findByProject(projectId).stream()
+                .filter(task -> task.getParentTask() == null)
+                .map(taskMapper::toResponse)
+                .collect(Collectors.toList());
+
+        List<TaskResponse> enrichedResponses = enrichWithUserDetails(responses);
+        enrichTaskCounts(enrichedResponses);
+        return enrichedResponses;
+    }
+
+    @Override
+    public List<TaskResponse> getTaskByProjectId(UUID projectId, UUID userId) {
+
+        List<TaskResponse> responses = taskRepository.findByProject(projectId).stream()
                 .filter(task -> task.getParentTask() == null)
                 .map(taskMapper::toResponse)
                 .collect(Collectors.toList());
@@ -183,6 +206,8 @@ public class TaskServiceImpl implements TaskService {
                     .map(taskMapper::toResponse)
                     .collect(Collectors.toList());
             response.setSubTasks(enrichWithUserDetails(subTaskResponses));
+
+            taskProgressEngine.enrichSubTaskContributions(response);
         } else {
             response.setSubTasks(new ArrayList<>());
         }
@@ -198,88 +223,18 @@ public class TaskServiceImpl implements TaskService {
         return enrichWithUserDetails(responses);
     }
 
+    @Override
+    public TaskStatisticsDto getTaskStatistics(UUID projectId) {
+        long totalTasks = taskRepository.countByProject(projectId);
+        long completedTasks = taskRepository.countByProjectAndStatus(projectId, TaskStatus.DONE);
+        return new TaskStatisticsDto(totalTasks, completedTasks);
+    }
+
+
+
     private Task findTaskOrThrow(UUID id) {
         return taskRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.toLocale("error.task.not_found", id)));
-    }
-
-    private void validateCreatePermission(UUID projectId, UUID userId, boolean isSystemAdmin) {
-        if (isSystemAdmin) return;
-        if (projectId != null && projectClient.isProjectAdmin(projectId, userId)) return;
-
-        throw new ForbiddenAccessException(Translator.toLocale("error.task.access_denied_create"));
-    }
-
-    private void validateSubTaskCreatePermission(Task parentTask, UUID userId, boolean isSystemAdmin) {
-        if (isSystemAdmin) return;
-        UUID projectId = parentTask.getProject();
-        if (projectId != null && projectClient.isProjectAdmin(projectId, userId)) return;
-        if (parentTask.getReporter() != null && parentTask.getReporter().equals(userId)) return;
-        if (parentTask.getAssignee() != null && parentTask.getAssignee().equals(userId)) return;
-
-        throw new ForbiddenAccessException(Translator.toLocale("error.task.access_denied_subtask"));
-    }
-
-    private void validateUpdatePermission(Task task, TaskRequest request, UUID userId, boolean isSystemAdmin) {
-        UUID projectId = task.getProject();
-        boolean isProjectAdmin = projectId != null && projectClient.isProjectAdmin(projectId, userId);
-        boolean isReporter = task.getReporter() != null && task.getReporter().equals(userId);
-
-        boolean isAssigneeChanged = request.getAssigneeId() != null && !Objects.equals(request.getAssigneeId(), task.getAssignee());
-        if (isAssigneeChanged) {
-            if (!isSystemAdmin && !isProjectAdmin && !isReporter) {
-                throw new ForbiddenAccessException(Translator.toLocale("error.task.access_denied_reassign"));
-            }
-            if (!userClient.existsById(request.getAssigneeId())) {
-                throw new ResourceNotFoundException(Translator.toLocale("error.user.assignee_not_found", request.getAssigneeId()));
-            }
-        }
-
-        boolean isAssignee = task.getAssignee() != null && task.getAssignee().equals(userId);
-        boolean isSubTask = task.getParentTask() != null;
-
-        if (!isSubTask) {
-            if (!isSystemAdmin && !isProjectAdmin && !isReporter) {
-                throw new ForbiddenAccessException(Translator.toLocale("error.task.access_denied_assignee_update"));
-            }
-        } else {
-            boolean isParentAssignee = task.getParentTask().getAssignee() != null && task.getParentTask().getAssignee().equals(userId);
-            if (!isSystemAdmin && !isProjectAdmin && !isReporter && !isAssignee && !isParentAssignee) {
-                throw new ForbiddenAccessException(Translator.toLocale("error.task.access_denied_subtask_update"));
-            }
-        }
-    }
-
-    private void validateStatusUpdatePermission(Task task, UUID userId, boolean isSystemAdmin) {
-        if (isSystemAdmin) return;
-
-        UUID projectId = task.getProject();
-        if (projectId != null && projectClient.isProjectAdmin(projectId, userId)) return;
-        if (task.getAssignee() != null && task.getAssignee().equals(userId)) return;
-        if (task.getReporter() != null && task.getReporter().equals(userId)) return;
-        if (task.getParentTask() != null) {
-            Task parent = task.getParentTask();
-            if (parent.getAssignee() != null && parent.getAssignee().equals(userId)) {
-                return;
-            }
-            if (parent.getReporter() != null && parent.getReporter().equals(userId)) {
-                return;
-            }
-        }
-        throw new ForbiddenAccessException(Translator.toLocale("error.task.access_denied_status"));
-    }
-
-    private void validateDeletePermission(Task task, UUID userId, boolean isSystemAdmin) {
-        if (isSystemAdmin) return;
-        UUID projectId = task.getProject();
-        if (projectId != null && projectClient.isProjectAdmin(projectId, userId)) return;
-        if (task.getReporter() != null && task.getReporter().equals(userId)) return;
-        if (task.getParentTask() != null) {
-            Task parent = task.getParentTask();
-            if (parent.getAssignee() != null && parent.getAssignee().equals(userId)) return;
-            if (parent.getReporter() != null && parent.getReporter().equals(userId)) return;
-        }
-        throw new ForbiddenAccessException(Translator.toLocale("error.task.access_denied_delete"));
     }
 
     private void validateCrossService(UUID projectId, UUID reporterId, UUID assigneeId) {
@@ -302,28 +257,21 @@ public class TaskServiceImpl implements TaskService {
         String projectName = fetchProjectName(savedTask.getProject());
         ActorInfo actor = fetchActorDetails(userId);
 
-        UUID projectUuid = savedTask.getProject() != null ? savedTask.getProject()
-                : (savedTask.getParentTask() != null ? savedTask.getParentTask().getProject() : null);
-
-        Map<String, Object> payload = new HashMap<>(Map.of(
-                "task", enriched,
-                "createdBy", userId,
-                "username", actor.getName(),
-                "userAvatar", actor.getAvatar(),
-                "targetName", enriched.getTitle() != null ? enriched.getTitle() : "Task",
-                "projectName", projectName
-        ));
-
         if ("STATUS_UPDATED".equals(eventType)) {
-            payload.put("oldStatus", oldStatus != null ? oldStatus : "TO_DO");
-            payload.put("projectId", projectUuid != null ? projectUuid.toString() : "");
-            taskEventPublisher.publishTaskStatusUpdated(savedTask.getId(), payload);
-        } else if ("SUB_CREATED".equals(eventType)) {
-            taskEventPublisher.publishSubTaskCreated(savedTask.getId(), payload);
+            UUID projectUuid = savedTask.getProject() != null ? savedTask.getProject() : (savedTask.getParentTask() != null ? savedTask.getParentTask().getProject() : null);
+            TaskEventDto event = taskMapper.toTaskStatusUpdatedEvent(enriched, actor, projectName, projectUuid, oldStatus);
+            taskEventPublisher.publishTaskStatusUpdated(savedTask.getId(), event);
+            return;
+        }
+        if ("SUB_CREATED".equals(eventType)) {
+            TaskEventDto event = taskMapper.toSubTaskCreatedEvent(enriched, actor, projectName);
+            taskEventPublisher.publishSubTaskCreated(savedTask.getId(), event);
         } else if ("CREATED".equals(eventType)) {
-            taskEventPublisher.publishTaskCreated(savedTask.getId(), payload);
+            TaskEventDto event = taskMapper.toTaskCreatedEvent(enriched, actor, projectName);
+            taskEventPublisher.publishTaskCreated(savedTask.getId(), event);
         } else {
-            taskEventPublisher.publishTaskUpdated(savedTask.getId(), payload);
+            TaskEventDto event = taskMapper.toTaskUpdatedEvent(enriched, actor, projectName);
+            taskEventPublisher.publishTaskUpdated(savedTask.getId(), event);
         }
     }
 
@@ -342,7 +290,7 @@ public class TaskServiceImpl implements TaskService {
     }
 
     private ActorInfo fetchActorDetails(UUID userId) {
-        if (userId == null) return new ActorInfo("Thành viên", "U");
+        if (userId == null) return new ActorInfo(null, "Thành viên", "U");
 
         try {
             List<UserDto> users = userClient.getUsersByIds(Collections.singletonList(userId));
@@ -355,12 +303,12 @@ public class TaskServiceImpl implements TaskService {
                         ? user.getAvatarUrl()
                         : (name != null && !name.isEmpty() ? name.substring(0, 1).toUpperCase() : "U");
 
-                return new ActorInfo(name, avatar);
+                return new ActorInfo(userId, name, avatar);
             }
         } catch (Exception e) {
             log.warn("Không thể lấy thông tin user {}: {}", userId, e.getMessage());
         }
-        return new ActorInfo("Thành viên", "U");
+        return new ActorInfo(userId, "Thành viên", "U");
     }
 
     private List<TaskResponse> enrichWithUserDetails(List<TaskResponse> responses) {
@@ -422,36 +370,95 @@ public class TaskServiceImpl implements TaskService {
         return map;
     }
 
-    private void syncParentTaskStatus(Task parentTask) {
-        List<Task> subTasks = taskRepository.findByParentTaskId(parentTask.getId());
-        if (subTasks.isEmpty()) return;
-
-        boolean allDone = subTasks.stream().allMatch(st -> st.getStatus() == TaskStatus.DONE);
-        boolean anyStarted = subTasks.stream().anyMatch(st -> st.getStatus() == TaskStatus.IN_PROGRESS || st.getStatus() == TaskStatus.DONE);
-
-        TaskStatus oldStatus = parentTask.getStatus();
-
-        if (allDone) {
-            parentTask.setStatus(TaskStatus.DONE);
-            if (parentTask.getCompletedAt() == null) {
-                parentTask.setCompletedAt(LocalDateTime.now());
+    private boolean hasPermission(Set<String> permissions, String... requiredPermissions) {
+        if (permissions == null || permissions.isEmpty()) {
+            return false;
+        }
+        if (permissions.contains("*")) {
+            return true;
+        }
+        for (String perm : requiredPermissions) {
+            if (permissions.contains(perm)) {
+                return true;
             }
-        } else if (anyStarted && parentTask.getStatus() == TaskStatus.TO_DO) {
-            parentTask.setStatus(TaskStatus.IN_PROGRESS);
-            parentTask.setCompletedAt(null);
-        } else if (!allDone && parentTask.getStatus() == TaskStatus.DONE) {
-            parentTask.setStatus(TaskStatus.IN_PROGRESS);
-            parentTask.setCompletedAt(null);
+        }
+        return false;
+    }
+
+    private void validateTaskOwnership(Task task, UUID currentUserId, String actionType) {
+        log.info("[TaskService-Security] Bắt đầu kiểm tra quyền {} cho Task ID: {}", actionType, task.getId());
+        log.info("[TaskService-Security] User thực hiện request: {}", currentUserId);
+
+        // 1. Kiểm tra xem User có phải là Project Admin (Quyền cao nhất của dự án) không?
+        boolean isProjectAdmin = false;
+        try {
+            Set<String> projectPerms = projectClient.getUserPermissions(task.getProject(), currentUserId);
+            log.info("[TaskService-Security] Danh sách quyền Project Role của User: {}", projectPerms);
+
+            // PROJECT_DELETE là quyền cao nhất, chỉ Admin/Owner mới có
+            if (projectPerms != null && projectPerms.contains(ProjectPermissions.PROJECT_DELETE)) {
+                isProjectAdmin = true;
+                log.info("[TaskService-Security] User là Project Admin -> Bỏ qua check Ownership.");
+            }
+        } catch (Exception e) {
+            log.warn("[TaskService-Security] Không lấy được quyền Project: {}", e.getMessage());
         }
 
-        if (oldStatus != parentTask.getStatus()) {
-            taskRepository.save(parentTask);
+        // Nếu là Admin dự án -> Cho phép mọi thao tác
+        if (isProjectAdmin) return;
+
+        // 2. Xác định vai trò của User đối với Task này
+        boolean isReporter = task.getReporter() != null && task.getReporter().equals(currentUserId);
+        boolean isAssignee = task.getAssignee() != null && task.getAssignee().equals(currentUserId);
+
+        log.info("[TaskService-Security] User là Reporter: {}", isReporter);
+        log.info("[TaskService-Security] User là Assignee: {}", isAssignee);
+
+        // Nếu là Sub-task, kiểm tra thêm quyền từ Task Cha
+        boolean isSubTask = task.getParentTask() != null;
+        boolean isParentReporter = false;
+        boolean isParentAssignee = false;
+
+        if (isSubTask) {
+            isParentReporter = task.getParentTask().getReporter() != null && task.getParentTask().getReporter().equals(currentUserId);
+            isParentAssignee = task.getParentTask().getAssignee() != null && task.getParentTask().getAssignee().equals(currentUserId);
+            log.info("[TaskService-Security] (Sub-task) User là Parent Reporter: {}", isParentReporter);
+            log.info("[TaskService-Security] (Sub-task) User là Parent Assignee: {}", isParentAssignee);
+        }
+
+        // 3. Phân định quyền theo Action
+        switch (actionType) {
+            case "UPDATE":
+            case "STATUS_UPDATE":
+                if (!isAssignee && !isReporter && !isParentAssignee && !isParentReporter) {
+                    log.error("[TaskService-Security] TỪ CHỐI (403): User {} cố gắng sửa Task {} không thuộc thẩm quyền.", currentUserId, task.getId());
+                    throw new ForbiddenAccessException("Bạn không có quyền cập nhật công việc này vì bạn không phải người phụ trách!");
+                }
+                log.info("[TaskService-Security] CHẤP NHẬN: User có quyền sửa đổi.");
+                break;
+
+            case "DELETE":
+                if (!isReporter && !isParentAssignee && !isParentReporter) {
+                    log.error("[TaskService-Security] TỪ CHỐI (403): User {} cố gắng xóa Task {}.", currentUserId, task.getId());
+                    throw new ForbiddenAccessException("Chỉ người tạo công việc hoặc quản lý dự án mới có quyền xóa!");
+                }
+                log.info("[TaskService-Security] CHẤP NHẬN: User có quyền xóa.");
+                break;
+
+            case "CREATE_SUBTASK":
+                if (!isAssignee && !isReporter) {
+                    log.error("[TaskService-Security] TỪ CHỐI (403): User {} cố tạo subtask cho Task {}.", currentUserId, task.getId());
+                    throw new ForbiddenAccessException("Chỉ người phụ trách hoặc người tạo công việc mới được phép thêm việc con!");
+                }
+                log.info("[TaskService-Security] CHẤP NHẬN: User có quyền tạo sub-task.");
+                break;
         }
     }
 
     @Getter
     @AllArgsConstructor
-    private static class ActorInfo {
+    public static class ActorInfo {
+        private UUID id;
         private String name;
         private String avatar;
     }

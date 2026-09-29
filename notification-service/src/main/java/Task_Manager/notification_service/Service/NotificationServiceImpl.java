@@ -5,12 +5,14 @@ import Task_Manager.notification_service.client.UserClient;
 import Task_Manager.notification_service.dto.NotificationResponse;
 import Task_Manager.notification_service.dto.UserDto;
 import Task_Manager.notification_service.entity.Notification;
+import Task_Manager.notification_service.entity.NotificationSetting;
 import Task_Manager.notification_service.repository.NotificationRepository;
 
 import Task_Manager.common_lib.exception.ResourceNotFoundException;
 import Task_Manager.common_lib.exception.ForbiddenAccessException;
 import Task_Manager.common_lib.utils.Translator;
 
+import Task_Manager.notification_service.repository.NotificationSettingRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
@@ -30,6 +32,7 @@ public class NotificationServiceImpl implements NotificationService {
     private final NotificationMapper notificationMapper;
     private final UserClient userClient;
     private final SimpMessagingTemplate messagingTemplate;
+    private final NotificationSettingRepository notificationSettingRepository;
 
     @Override
     public List<NotificationResponse> getUserNotifications(UUID userId) {
@@ -45,7 +48,15 @@ public class NotificationServiceImpl implements NotificationService {
     }
 
     @Override
+    @Transactional
     public NotificationResponse createNotification(UUID recipientId, UUID actorId, String type, String target, String project, String message) {
+        NotificationSetting setting = getOrCreateUserSetting(recipientId);
+
+        if (!shouldSendNotification(setting, type)) {
+            log.info("Bỏ qua thông báo loại [{}] cho user [{}] do cấu hình cá nhân đang tắt.", type, recipientId);
+            return null;
+        }
+
         Notification notification = Notification.builder()
                 .recipientId(recipientId)
                 .actorId(actorId)
@@ -61,6 +72,14 @@ public class NotificationServiceImpl implements NotificationService {
         NotificationResponse response = notificationMapper.toResponse(saved);
         response.setAvatar("U");
         response.setProject(resolveProjectName(project));
+
+        if (setting.isPushNotifications()) {
+            messagingTemplate.convertAndSendToUser(
+                    recipientId.toString(),
+                    "/queue/notifications",
+                    response
+            );
+        }
 
         return response;
     }
@@ -96,18 +115,11 @@ public class NotificationServiceImpl implements NotificationService {
         return notificationRepository.countByUserIdAndIsReadFalse(userId);
     }
 
+    @Override
     public void createGlobalNotification(UUID adminId, String message, List<UUID> userIds) {
-        List<UUID> recipentIds;
+        if (userIds == null || userIds.isEmpty()) return;
 
-        if (!userIds.isEmpty() && userIds != null) {
-            recipentIds = userIds;
-        } else {
-            recipentIds = new ArrayList<>();
-        }
-
-        if (recipentIds.isEmpty() || recipentIds.isEmpty()) return;
-
-        List<Notification> notifications = recipentIds.stream().map(userId -> {
+        List<Notification> notifications = userIds.stream().map(userId -> {
             Notification notif = new Notification();
             notif.setRecipientId(userId);
             notif.setActorId(adminId);
@@ -125,13 +137,49 @@ public class NotificationServiceImpl implements NotificationService {
                 "timestamp", String.valueOf(System.currentTimeMillis())
         );
 
-        if (userIds != null && !userIds.isEmpty()) {
-            for (UUID userId : userIds) {
-                messagingTemplate.convertAndSendToUser(userId.toString(), "/queue/notifications", wsPayload);
-            }
-        } else {
-            messagingTemplate.convertAndSend("/topic/broadcast", wsPayload);
+        for (UUID userId : userIds) {
+            messagingTemplate.convertAndSendToUser(userId.toString(), "/queue/notifications", wsPayload);
         }
+    }
+
+
+    public NotificationSetting getOrCreateUserSetting(UUID userId) {
+        return notificationSettingRepository.findById(userId)
+                .orElseGet(() -> notificationSettingRepository.save(
+                        NotificationSetting.builder()
+                                .id(userId)
+                                .notifyOnAssigned(true)
+                                .notifyOnMention(true)
+                                .notifyOnStatusChange(false)
+                                .emailNotifications(true)
+                                .pushNotifications(true)
+                                .build()
+                ));
+    }
+
+    @Transactional
+    public NotificationSetting updateUserNotificationSetting(UUID userId, NotificationSetting newSetting) {
+        NotificationSetting current = getOrCreateUserSetting(userId);
+        current.setNotifyOnAssigned(newSetting.isNotifyOnAssigned());
+        current.setNotifyOnMention(newSetting.isNotifyOnMention());
+        current.setNotifyOnStatusChange(newSetting.isNotifyOnStatusChange());
+        current.setEmailNotifications(newSetting.isEmailNotifications());
+        current.setPushNotifications(newSetting.isPushNotifications());
+        return notificationSettingRepository.save(current);
+    }
+
+
+
+
+    private boolean shouldSendNotification(NotificationSetting setting, String type) {
+        if (type == null) return true;
+
+        return switch (type.toUpperCase()) {
+            case "TASK_ASSIGNED", "TASK_CREATED" -> setting.isNotifyOnAssigned();
+            case "TASK_STATUS_UPDATED" -> setting.isNotifyOnStatusChange();
+            case "MENTION", "COMMENT_MENTION" -> setting.isNotifyOnMention();
+            default -> true;
+        };
     }
 
     private Map<UUID, UserDto> fetchActorDetails(List<Notification> notifications) {

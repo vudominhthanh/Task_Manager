@@ -5,6 +5,8 @@ import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
+import java.util.HashSet;
+import java.util.Set;
 import java.util.UUID;
 
 @Entity
@@ -15,6 +17,10 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Attachment extends BaseEntity {
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "task_id")
     private Task task;
@@ -33,4 +39,16 @@ public class Attachment extends BaseEntity {
 
     @Column(name = "s3_key", length = 500, nullable = false)
     private String s3Key;
+    @Column(name = "visibility_type", length = 30)
+    @Builder.Default
+    private String visibilityType = "PROJECT";
+
+    @ElementCollection(fetch = FetchType.LAZY)
+    @CollectionTable(
+            name = "attachment_access",
+            joinColumns = @JoinColumn(name = "attachment_id")
+    )
+    @Column(name = "user_id")
+    @Builder.Default
+    private Set<UUID> allowedUserIds = new HashSet<>();
 }

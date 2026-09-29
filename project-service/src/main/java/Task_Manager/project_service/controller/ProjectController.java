@@ -1,113 +1,105 @@
-package Task_Manager.project_service.controller;
+        package Task_Manager.project_service.controller;
 
-import Task_Manager.project_service.dto.ProjectRequest;
-import Task_Manager.project_service.dto.ProjectResponse;
-import Task_Manager.project_service.repository.ProjectRepository;
-import Task_Manager.project_service.service.ProjectService;
-import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.security.core.Authentication;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+        import Task_Manager.common_lib.constant.ProjectPermissions;
+        import Task_Manager.project_service.dto.ProjectRequest;
+        import Task_Manager.project_service.dto.ProjectResponse;
+        import Task_Manager.project_service.entity.ProjectStatus;
+        import Task_Manager.project_service.repository.ProjectRepository;
+        import Task_Manager.project_service.service.ProjectService;
+        import jakarta.validation.Valid;
+        import lombok.RequiredArgsConstructor;
+        import org.springframework.data.domain.Page;
+        import org.springframework.data.domain.PageRequest;
+        import org.springframework.data.domain.Pageable;
+        import org.springframework.data.domain.Sort;
+        import org.springframework.security.access.prepost.PreAuthorize;
+        import org.springframework.security.core.Authentication;
+        import org.springframework.http.HttpStatus;
+        import org.springframework.http.ResponseEntity;
+        import org.springframework.web.bind.annotation.*;
 
-import java.security.Principal;
-import java.util.List;
-import java.util.UUID;
+        import java.security.Principal;
+        import java.util.List;
+        import java.util.UUID;
 
-@RestController
-@RequestMapping("/api/projects")
-@RequiredArgsConstructor
-public class ProjectController {
-    private final ProjectService projectService;
-    private final ProjectRepository projectRepository;
+        @RestController
+        @RequestMapping("/api/projects")
+        @RequiredArgsConstructor
+        public class ProjectController {
+            private final ProjectService projectService;
+            private final ProjectRepository projectRepository;
 
-    @GetMapping("/{projectId}/exists")
-    public ResponseEntity<Boolean> checkProjectExists(@PathVariable UUID projectId) {
-        boolean exists = projectRepository.existsById(projectId);
-        return ResponseEntity.ok(exists);
-    }
+            private UUID getCurrentUserId(Authentication authentication) {
+                return UUID.fromString(authentication.getName());
+            }
 
-    @GetMapping("/my-project-ids")
-    public ResponseEntity<List<UUID>> getProjectIdsByUserId(Principal principal) {
-        UUID currentUserId = UUID.fromString(principal.getName());
-        List<UUID> projectIds = projectService.findProjectIdsByUserId(currentUserId);
-        return ResponseEntity.ok(projectIds);
-    }
+            @GetMapping("/{projectId}/exists")
+            public ResponseEntity<Boolean> checkProjectExists(@PathVariable UUID projectId) {
+                return ResponseEntity.ok(projectRepository.existsById(projectId));
+            }
 
-    private UUID getCurrentUserId(Authentication authentication) {
-        return UUID.fromString(authentication.getName());
-    }
+            @GetMapping("/my-project-ids")
+            public ResponseEntity<List<UUID>> getProjectIdsByUserId(Principal principal) {
+                UUID currentUserId = UUID.fromString(principal.getName());
+                return ResponseEntity.ok(projectService.findProjectIdsByUserId(currentUserId));
+            }
 
-    @PostMapping
-    public ResponseEntity<ProjectResponse> createProject(@Valid @RequestBody ProjectRequest projectRequest, Authentication authentication) {
-        UUID ownerId = getCurrentUserId(authentication);
-        ProjectResponse projectResponse;
-        projectResponse = projectService.createProject(projectRequest, ownerId);
-        return new ResponseEntity<>(projectResponse,HttpStatus.CREATED);
-    }
+            @PreAuthorize("hasAuthority('PROJECT_CREATE') or hasAuthority('ROLE_ADMIN')")
+            @PostMapping
+            public ResponseEntity<ProjectResponse> createProject(@Valid @RequestBody ProjectRequest projectRequest, Authentication authentication) {
+                ProjectResponse projectResponse = projectService.createProject(projectRequest, getCurrentUserId(authentication));
+                return new ResponseEntity<>(projectResponse, HttpStatus.CREATED);
+            }
 
-    @GetMapping
-    public ResponseEntity<Page<ProjectResponse>> getProjects(
-            @RequestParam(required = false) String keyword,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            Authentication authentication) {
+            @GetMapping
+            public ResponseEntity<Page<ProjectResponse>> getProjects(
+                    @RequestParam(required = false) String keyword,
+                    @RequestParam(defaultValue = "0") int page,
+                    @RequestParam(defaultValue = "10") int size,
+                    Authentication authentication) {
+                Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+                return ResponseEntity.ok(projectService.getProjects(getCurrentUserId(authentication), keyword, pageable));
+            }
 
-        UUID currentUserId = UUID.fromString(authentication.getName());
-        Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+            @PreAuthorize("@projectSecurity.hasPermission(#id, T(Task_Manager.common_lib.constant.ProjectPermissions).PROJECT_VIEW)")
+            @GetMapping("/{id}")
+            public ResponseEntity<ProjectResponse> getProjectById(@PathVariable UUID id) {
+                return ResponseEntity.ok(projectService.getProjectById(id));
+            }
 
-        return ResponseEntity.ok(projectService.getProjects(currentUserId, keyword, pageable));
-    }
+            // Chặn bằng Quyền Cấp Dự Án
+            @PreAuthorize("@projectSecurity.hasPermission(#id, '" + ProjectPermissions.PROJECT_UPDATE + "')")
+            @PutMapping("/{id}")
+            public ResponseEntity<ProjectResponse> updateProject(@PathVariable UUID id, @Valid @RequestBody ProjectRequest projectRequest, Authentication authentication) {
+                return new ResponseEntity<>(projectService.updateProject(id, projectRequest, getCurrentUserId(authentication)), HttpStatus.OK);
+            }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<ProjectResponse> getProjectById(@PathVariable UUID id) {
-        return ResponseEntity.ok(projectService.getProjectById(id));
-    }
+            // Chặn bằng Quyền Cấp Dự Án
+            @PreAuthorize("@projectSecurity.hasPermission(#id, '" + ProjectPermissions.PROJECT_DELETE + "')")
+            @DeleteMapping("/{id}")
+            public ResponseEntity<Void> deleteProject(@PathVariable UUID id, Authentication authentication) {
+                projectService.deleteProject(id, getCurrentUserId(authentication));
+                return ResponseEntity.noContent().build();
+            }
 
-    @PutMapping("/{id}")
-    public ResponseEntity<ProjectResponse> updateProject(@PathVariable UUID id, @Valid @RequestBody ProjectRequest projectRequest, Authentication authentication) {
-        UUID currentUserId = getCurrentUserId(authentication);
+            @PostMapping("/batch")
+            public ResponseEntity<List<ProjectResponse>> getProjectsByIds(@RequestBody List<UUID> projectIds) {
+                return ResponseEntity.ok(projectService.getProjectsByIds(projectIds));
+            }
 
-        boolean isSystemAdmin = authentication.getAuthorities().stream()
-                .anyMatch(auth -> "SYS_AD".equalsIgnoreCase(auth.getAuthority())
-                        || "ROLE_SYS_AD".equalsIgnoreCase(auth.getAuthority()));
+            @GetMapping("/{projectId}/is-admin")
+            public ResponseEntity<Boolean> isProjectAdmin(@PathVariable UUID projectId, @RequestParam UUID userId) {
+                return ResponseEntity.ok(projectService.isProjectAdmin(projectId, userId));
+            }
 
-        ProjectResponse projectResponse = projectService.updateProject(id, projectRequest, currentUserId, isSystemAdmin);
-        return new ResponseEntity<>(projectResponse,HttpStatus.OK);
-    }
-
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteProject(@PathVariable UUID id, Authentication authentication) {
-        UUID currentUserId = getCurrentUserId(authentication);
-
-        if (authentication != null && authentication.getAuthorities() != null) {
-            authentication.getAuthorities().forEach(auth -> {
-                System.out.println("   --> Authority: [" + auth.getAuthority() + "] (Class: " + auth.getClass().getSimpleName() + ")");
-            });
+            // Chặn bằng Quyền Cấp Dự Án
+            @PreAuthorize("@projectSecurity.hasPermission(#id, '" + ProjectPermissions.PROJECT_UPDATE + "')")
+            @PatchMapping("/{id}/status")
+            public ResponseEntity<ProjectResponse> updateProjectStatus(
+                    @PathVariable UUID id,
+                    @RequestParam("status") String statusStr,
+                    Authentication authentication) {
+                ProjectStatus newStatus = ProjectStatus.valueOf(statusStr.toUpperCase());
+                return ResponseEntity.ok(projectService.updateProjectStatus(id, newStatus, getCurrentUserId(authentication)));
+            }
         }
-        boolean isSystemAdmin = authentication.getAuthorities().stream()
-                .anyMatch(auth -> "SYS_AD".equalsIgnoreCase(auth.getAuthority())
-                        || "ROLE_SYS_AD".equalsIgnoreCase(auth.getAuthority()));
-        projectService.deleteProject(id, currentUserId, isSystemAdmin);
-        return ResponseEntity.noContent().build();
-    }
-
-    @PostMapping("/batch")
-    public ResponseEntity<List<ProjectResponse>> getProjectsByIds(@RequestBody List<UUID> projectIds) {
-        List<ProjectResponse> projects = projectService.getProjectsByIds(projectIds);
-        return ResponseEntity.ok(projects);
-    }
-
-    @GetMapping("/{projectId}/is-admin")
-    public ResponseEntity<Boolean> isProjectAdmin(
-            @PathVariable UUID projectId,
-            @RequestParam UUID userId) {
-        return ResponseEntity.ok(projectService.isProjectAdmin(projectId, userId));
-    }
-
-}

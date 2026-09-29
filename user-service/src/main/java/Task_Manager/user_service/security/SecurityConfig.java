@@ -2,6 +2,7 @@ package Task_Manager.user_service.security;
 
 import Task_Manager.common_lib.security.JwtAccessDeniedHandler;
 import Task_Manager.common_lib.security.JwtAuthenticationEntryPoint;
+import Task_Manager.common_lib.security.JwtValidationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -22,12 +23,12 @@ import java.util.List;
 @EnableWebSecurity
 public class SecurityConfig {
 
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final JwtValidationFilter JwtValidationFilter;
     private final JwtAccessDeniedHandler jwtAccessDeniedHandler;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
 
-    public  SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter, JwtAccessDeniedHandler jwtAccessDeniedHandler,  JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint) {
-        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+    public  SecurityConfig(JwtValidationFilter jwtValidationFilter, JwtAccessDeniedHandler jwtAccessDeniedHandler,  JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint) {
+        this.JwtValidationFilter = jwtValidationFilter;
         this.jwtAccessDeniedHandler = jwtAccessDeniedHandler;
         this.jwtAuthenticationEntryPoint = jwtAuthenticationEntryPoint;
     }
@@ -59,10 +60,15 @@ public class SecurityConfig {
 
             .authorizeHttpRequests(auth -> auth
                     .requestMatchers("/api/auth/**").permitAll()
-                    .requestMatchers("/api/users/batch").permitAll()
                     .requestMatchers("/api/users/**").authenticated()
+                    .requestMatchers(
+                            "/actuator/health",
+                            "/actuator/info",
+                            "/actuator/prometheus",
+                            "/actuator/metrics"
+                    ).permitAll()
                     .anyRequest().authenticated()
-            ).addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+            ).addFilterBefore(JwtValidationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 }

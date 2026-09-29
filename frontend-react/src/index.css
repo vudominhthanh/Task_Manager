@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
-/* Custom Scrollbar cho Kanban Board */
+@custom-variant dark (&:where(.dark, .dark *));
+
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

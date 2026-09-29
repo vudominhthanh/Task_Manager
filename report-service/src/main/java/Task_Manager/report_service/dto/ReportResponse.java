@@ -16,14 +16,21 @@ public class ReportResponse {
         private UUID id;
         private UUID projectId;
         private String title;
+        private String description;
         private String status;
         private String priority;
         private UUID assigneeId;
         private UUID reporterId;
         private LocalDate startDate;
         private LocalDate dueDate;
-        private UUID parentTaskId;
         private LocalDateTime completedAt;
+        private UUID parentTaskId;
+
+        private BigDecimal estimatedEffort;
+        private BigDecimal actualEffort;
+        private BigDecimal completionPercentage;
+        private Double position;
+
         private LocalDateTime createdAt;
         private LocalDateTime updatedAt;
     }

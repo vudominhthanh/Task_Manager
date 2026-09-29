@@ -18,6 +18,7 @@ export const useGlobalWebSocket = () => {
 
     stompClientRef.current.subscribe(topic, (message) => {
       try {
+        // console.log("🔥 [WS] NHẬN TỪ BACKEND:", message.body);
         let eventData = JSON.parse(message.body);
         if (typeof eventData === "string") {
           eventData = JSON.parse(eventData);
@@ -37,21 +38,28 @@ export const useGlobalWebSocket = () => {
           });
           return;
         }
+        const type = (eventData.type || eventData.eventType || "").toUpperCase();
+        const payload = eventData.payload || eventData; 
 
-        const type = (eventData.type || "").toUpperCase();
-        const payload = eventData.payload || {};
+        const emitData = { 
+          type, 
+          ...payload,
+          projectId: payload.projectId || payload.comment?.projectId || payload.attachment?.projectId,
+          taskId: payload.taskId || payload.comment?.taskId || payload.attachment?.taskId
+        };
 
         if (type.includes("TASK") || type.includes("SUB_TASK"))
-          emitEvent(EVENTS.TASK, { type, payload });
+          emitEvent(EVENTS.TASK, emitData);
         if (type.includes("COMMENT"))
-          emitEvent(EVENTS.COMMENT, { type, payload });
+          emitEvent(EVENTS.COMMENT, emitData);
         if (type.includes("ATTACHMENT"))
-          emitEvent(EVENTS.ATTACHMENT, { type, payload });
+          emitEvent(EVENTS.ATTACHMENT, emitData);
         if (type.includes("PROJECT"))
-          emitEvent(EVENTS.PROJECT, { type, payload });
+          emitEvent(EVENTS.PROJECT, emitData);
         if (type.includes("MEMBER"))
-          emitEvent(EVENTS.MEMBER, { type, payload });
-        if (type.includes("USER")) emitEvent(EVENTS.USER, { type, payload });
+          emitEvent(EVENTS.MEMBER, emitData);
+        if (type.includes("USER")) 
+          emitEvent(EVENTS.USER, emitData);
 
         let prefs = {
           taskAssigned: true,
@@ -76,11 +84,11 @@ export const useGlobalWebSocket = () => {
             (type.includes("MEMBER") || type.includes("PROJECT")));
 
         if (!isMuted) {
-          emitEvent(EVENTS.NOTIFICATION, { type, payload });
+          emitEvent(EVENTS.NOTIFICATION, emitData);
         }
       } catch (e) {
         console.error("❌ [WS LỖI PARSE]:", e, message.body);
-      }
+      } 
     });
   };
 
@@ -108,14 +116,9 @@ export const useGlobalWebSocket = () => {
         }
 
         try {
-          const res = await apiClient.get(
-            `http://localhost:8083/api/projects/my-project-ids`,
-            {
-              headers: { Authorization: `Bearer ${token}` },
-            },
-          );
-          if (res.ok) {
-            const ids = await res.json();
+          const res = await apiClient.get(`http://localhost:8083/api/projects/my-project-ids`);
+          const ids = res.data || []; 
+          if (Array.isArray(ids)) {
             ids.forEach((id) => subscribeTopic(`/topic/project/${id}`));
           }
         } catch (err) {

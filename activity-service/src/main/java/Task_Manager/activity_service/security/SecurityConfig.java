@@ -63,6 +63,12 @@ public class SecurityConfig {
 
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/activities/**").authenticated()
+                        .requestMatchers(
+                                "/actuator/health",
+                                "/actuator/info",
+                                "/actuator/prometheus",
+                                "/actuator/metrics"
+                        ).permitAll()
                         .anyRequest().authenticated()
                 ).addFilterBefore(jwtValidationFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

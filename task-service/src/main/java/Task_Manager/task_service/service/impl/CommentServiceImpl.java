@@ -1,7 +1,12 @@
 package Task_Manager.task_service.service.impl;
 
+import Task_Manager.common_lib.constant.ProjectPermissions;
+import Task_Manager.common_lib.exception.ForbiddenAccessException;
+import Task_Manager.common_lib.exception.ResourceNotFoundException;
+import Task_Manager.common_lib.utils.Translator;
 import Task_Manager.task_service.client.ProjectClient;
 import Task_Manager.task_service.client.UserClient;
+import Task_Manager.task_service.dto.CommentEventDto;
 import Task_Manager.task_service.dto.CommentRequest;
 import Task_Manager.task_service.dto.CommentResponse;
 import Task_Manager.task_service.dto.UserDto;
@@ -11,15 +16,13 @@ import Task_Manager.task_service.kafka.CommentEventPublisher;
 import Task_Manager.task_service.mapper.CommentMapper;
 import Task_Manager.task_service.repository.CommentRepository;
 import Task_Manager.task_service.repository.TaskRepository;
+import Task_Manager.task_service.security.TaskSecurity;
 import Task_Manager.task_service.service.CommentService;
-
-import Task_Manager.common_lib.exception.ResourceNotFoundException;
-import Task_Manager.common_lib.exception.ForbiddenAccessException;
-import Task_Manager.common_lib.utils.Translator;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -33,15 +36,17 @@ public class CommentServiceImpl implements CommentService {
     private final TaskRepository taskRepository;
     private final CommentMapper commentMapper;
     private final CommentEventPublisher commentEventPublisher;
-    private final ProjectClient projectClient;
+    private final TaskSecurity taskSecurity;
     private final UserClient userClient;
+    private final ProjectClient projectClient;
 
     @Override
-    public CommentResponse addComment(UUID taskId, UUID userId, CommentRequest request, boolean isSystemAdmin) {
+    @Transactional
+    public CommentResponse addComment(UUID taskId, UUID userId, CommentRequest request) {
         Task task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.toLocale("error.task.not_found", taskId)));
 
-        validateAddPermission(task, userId, isSystemAdmin);
+        validateTaskCommentAccess(task, userId);
 
         Comment parentComment = null;
         if (request.getParentCommentId() != null) {
@@ -49,7 +54,7 @@ public class CommentServiceImpl implements CommentService {
                     .orElseThrow(() -> new ResourceNotFoundException(Translator.toLocale("error.comment.parent_not_found", request.getParentCommentId())));
         }
 
-        Comment comment = commentMapper.toEntity(request, task, userId, parentComment);
+        Comment comment = commentMapper.toEntity(request, taskId, task.getProject(), userId, parentComment);
         Comment savedComment = commentRepository.save(comment);
 
         CommentResponse enriched = enrichSingleComment(commentMapper.toResponse(savedComment));
@@ -58,68 +63,125 @@ public class CommentServiceImpl implements CommentService {
                 ? task.getAssignee()
                 : (!Objects.equals(task.getReporter(), userId) ? task.getReporter() : null);
 
-        Map<String, Object> eventPayload = new HashMap<>();
-        eventPayload.put("projectId", task.getProject());
-        eventPayload.put("taskId", taskId);
-        eventPayload.put("comment", enriched);
-        eventPayload.put("createdBy", userId);
-        eventPayload.put("recipientId", recipientId);
-        eventPayload.put("targetName", task.getTitle() != null ? task.getTitle() : "công việc");
-        eventPayload.put("username", resolveName(enriched.getUserName()));
-        eventPayload.put("userAvatar", resolveAvatar(enriched.getUserAvatar()));
-
-        commentEventPublisher.publishCommentCreated(savedComment.getId(), eventPayload);
+        CommentEventDto event = commentMapper.toCommentCreatedEvent(taskId, task.getProject(), task.getTitle(), task.getProject(), enriched, userId, recipientId);
+        commentEventPublisher.publishCommentCreated(savedComment.getId(), event);
 
         return enriched;
     }
 
     @Override
-    public CommentResponse updateComment(UUID commentId, UUID userId, CommentRequest request, boolean isSystemAdmin) {
-        Comment comment = commentRepository.findByIdWithTask(commentId)
+    @Transactional
+    public CommentResponse updateComment(UUID commentId, UUID userId, CommentRequest request) {
+        Comment comment = commentRepository.findById(commentId)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.toLocale("error.comment.not_found", commentId)));
 
-        Task task = comment.getTask();
-        validateModifyPermission(task, comment, userId, isSystemAdmin, "chỉnh sửa");
+        if (!comment.getUserId().equals(userId)) {
+            throw new ForbiddenAccessException("Bạn không có quyền sửa bình luận của người khác!");
+        }
 
         commentMapper.updateEntityFromRequest(request, comment);
         Comment updatedComment = commentRepository.save(comment);
 
         CommentResponse enriched = enrichSingleComment(commentMapper.toResponse(updatedComment));
 
-        commentEventPublisher.publishCommentUpdated(commentId, Map.of(
-                "projectId", task != null ? task.getProject() : null,
-                "taskId", task != null ? task.getId() : null,
-                "comment", enriched,
-                "updatedBy", userId,
-                "username", resolveName(enriched.getUserName()),
-                "userAvatar", resolveAvatar(enriched.getUserAvatar()),
-                "targetName", truncateContent(enriched.getContent())
-        ));
+        CommentEventDto event = commentMapper.toCommentUpdatedEvent(comment.getTaskId(), comment.getProjectId(), comment.getProjectId(), enriched, userId, truncateContent(enriched.getContent()));
+        commentEventPublisher.publishCommentUpdated(commentId, event);
 
         return enriched;
     }
 
     @Override
-    public void deleteComment(UUID commentId, UUID userId, boolean isSystemAdmin) {
-        Comment comment = commentRepository.findByIdWithTask(commentId)
+    @Transactional
+    public void deleteComment(UUID commentId, UUID userId) {
+        Comment comment = commentRepository.findById(commentId)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.toLocale("error.comment.not_found", commentId)));
 
-        Task task = comment.getTask();
-        validateModifyPermission(task, comment, userId, isSystemAdmin, "xóa");
+
+        boolean isOwner = comment.getUserId().equals(userId);
+        if (!isOwner) {
+            boolean canDeleteAny = taskSecurity.hasTaskPermission(comment.getTaskId(), ProjectPermissions.COMMENT_DELETE_ANY);
+            if (!canDeleteAny) {
+                throw new ForbiddenAccessException("Bạn không có quyền xóa bình luận này!");
+            }
+        }
 
         commentRepository.deleteById(commentId);
 
-        commentEventPublisher.publishCommentDeleted(commentId, Map.of(
-                "projectId", task != null ? task.getProject() : null,
-                "taskId", task != null ? task.getId() : null,
-                "commentId", commentId,
-                "deletedBy", userId,
-                "targetName", "Bình luận"
-        ));
+        CommentEventDto event = commentMapper.toCommentDeletedEvent(comment.getTaskId(), comment.getProjectId(), comment.getProjectId(), commentId, userId);
+        commentEventPublisher.publishCommentDeleted(commentId, event);
+    }
+
+    @Override
+    @Transactional
+    public CommentResponse addProjectComment(UUID projectId, UUID userId, CommentRequest request) {
+        if (!projectClient.existsById(projectId)) {
+            throw new ResourceNotFoundException("Không tìm thấy dự án: " + projectId);
+        }
+
+        Comment parentComment = null;
+        if (request.getParentCommentId() != null) {
+            parentComment = commentRepository.findById(request.getParentCommentId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy bình luận cha!"));
+        }
+
+        Comment comment = commentMapper.toEntity(request, null, projectId, userId, parentComment);
+        Comment savedComment = commentRepository.save(comment);
+
+        CommentResponse enriched = enrichSingleComment(commentMapper.toResponse(savedComment));
+
+        CommentEventDto event = commentMapper.toCommentCreatedEvent(null, projectId, null, projectId, enriched, userId, null);
+        commentEventPublisher.publishCommentCreated(savedComment.getId(), event);
+
+        return enriched;
+    }
+
+
+
+    @Override
+    public List<CommentResponse> getCommentsByProjectId(UUID projectId) {
+        List<Comment> allComments = commentRepository.findByProjectIdAndTaskIdIsNull(projectId);
+        if (allComments.isEmpty()) return Collections.emptyList();
+
+        List<CommentResponse> allResponses = allComments.stream()
+                .map(commentMapper::toResponse)
+                .collect(Collectors.toList());
+
+        Map<UUID, CommentResponse> responseMap = new HashMap<>();
+        for (CommentResponse res : allResponses) {
+            res.setReplies(new ArrayList<>());
+            responseMap.put(res.getId(), res);
+        }
+
+        List<CommentResponse> rootComments = new ArrayList<>();
+        for (CommentResponse res : allResponses) {
+            UUID parentId = res.getParentCommentId();
+            if (parentId == null) {
+                rootComments.add(res);
+            } else {
+                CommentResponse parent = responseMap.get(parentId);
+                if (parent != null) {
+                    parent.getReplies().add(res);
+                } else {
+                    rootComments.add(res);
+                }
+            }
+        }
+
+        enrichCompleteTree(rootComments);
+        return rootComments;
     }
 
     @Override
     public List<CommentResponse> getCommentByTaskId(UUID taskId) {
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy công việc"));
+
+        Authentication authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.isAuthenticated() && !authentication.getName().equals("anonymousUser")) {
+            UUID userId = UUID.fromString(authentication.getName());
+            validateTaskCommentAccess(task, userId);
+        }
+
         List<Comment> allComments = commentRepository.findByTaskId(taskId);
         if (allComments.isEmpty()) return Collections.emptyList();
 
@@ -160,36 +222,9 @@ public class CommentServiceImpl implements CommentService {
         return enrichSingleComment(commentMapper.toResponse(comment));
     }
 
-    private void validateAddPermission(Task task, UUID userId, boolean isSystemAdmin) {
-        if (isSystemAdmin) return;
-        UUID projectId = task.getProject();
-        if (projectId != null && projectClient.isProjectAdmin(projectId, userId)) return;
-        if (task.getAssignee() != null && task.getAssignee().equals(userId)) return;
-        if (task.getReporter() != null && task.getReporter().equals(userId)) return;
-
-        throw new ForbiddenAccessException(Translator.toLocale("error.comment.access_denied_add"));
-    }
-
-    private void validateModifyPermission(Task task, Comment comment, UUID userId, boolean isSystemAdmin, String actionName) {
-        if (isSystemAdmin) return;
-        UUID projectId = task != null ? task.getProject() : null;
-        if (projectId != null && projectClient.isProjectAdmin(projectId, userId)) return;
-        if (comment.getUserId().equals(userId)) return;
-
-        throw new ForbiddenAccessException(Translator.toLocale("error.comment.access_denied_modify", actionName));
-    }
-
     private String truncateContent(String content) {
         if (content == null) return "";
         return content.length() > 20 ? content.substring(0, 20) + "..." : content;
-    }
-
-    private String resolveName(String name) {
-        return (name != null && !name.trim().isEmpty()) ? name : "Thành viên";
-    }
-
-    private String resolveAvatar(String avatar) {
-        return (avatar != null && !avatar.trim().isEmpty()) ? avatar : "U";
     }
 
     private CommentResponse enrichSingleComment(CommentResponse response) {
@@ -265,5 +300,26 @@ public class CommentServiceImpl implements CommentService {
             res.setUserAvatar(user.getAvatarUrl() != null ? user.getAvatarUrl()
                     : (user.getUsername() != null && !user.getUsername().isEmpty() ? user.getUsername().substring(0, 1).toUpperCase() : "U"));
         }
+    }
+
+    private void validateTaskCommentAccess(Task task, UUID userId) {
+
+        boolean isDirect = (task.getAssignee() != null && task.getAssignee().equals(userId)) ||
+                (task.getReporter() != null && task.getReporter().equals(userId));
+        if (isDirect) return;
+
+        if (task.getParentTask() != null) {
+            Task parent = task.getParentTask();
+            boolean isParentInvolved = (parent.getAssignee() != null && parent.getAssignee().equals(userId)) ||
+                    (parent.getReporter() != null && parent.getReporter().equals(userId));
+            if (isParentInvolved) return;
+        } else {
+            List<Task> subTasks = taskRepository.findByParentTaskId(task.getId());
+            boolean isSubtaskAssignee = subTasks.stream()
+                    .anyMatch(st -> st.getAssignee() != null && st.getAssignee().equals(userId));
+            if (isSubtaskAssignee) return;
+        }
+
+        throw new ForbiddenAccessException("Bạn không có quyền tham gia vào không gian của công việc này!");
     }
 }

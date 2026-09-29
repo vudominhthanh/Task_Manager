@@ -4,10 +4,7 @@ import Task_Manager.common_lib.entity.AuditableEntity;
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.hibernate.annotations.CreationTimestamp;
-import org.hibernate.annotations.UpdateTimestamp;
 
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 
@@ -19,9 +16,15 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Comment extends AuditableEntity {
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "task_id", nullable = false)
-    private Task task;
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
+
+    @JoinColumn(name = "task_id", nullable = true)
+    private UUID taskId;
+
+    @Column(name = "project_id", nullable = true)
+    private UUID projectId;
 
     @Column(name = "user_id", nullable = false)
     private UUID userId;
@@ -32,4 +35,7 @@ public class Comment extends AuditableEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "parent_comment_id")
     private Comment parentComment;
+
+    @Column(name = "_updated_by")
+    private UUID updatedBy;
 }

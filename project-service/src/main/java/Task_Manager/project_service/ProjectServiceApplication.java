@@ -1,5 +1,6 @@
 package Task_Manager.project_service;
 
+import Task_Manager.common_lib.constant.ProjectPermissions;
 import Task_Manager.common_lib.exception.GlobalExceptionHandler;
 import Task_Manager.common_lib.security.FeignJwtInterceptor;
 import Task_Manager.common_lib.security.JwtAccessDeniedHandler;
@@ -16,7 +17,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaAuditing;
 @EnableDiscoveryClient
 @EnableJpaAuditing
 @EnableFeignClients
-@Import({FeignJwtInterceptor.class, JwtValidationFilter.class, GlobalExceptionHandler.class, JwtAuthenticationEntryPoint.class, JwtAccessDeniedHandler.class})
+@Import({FeignJwtInterceptor.class, JwtValidationFilter.class, GlobalExceptionHandler.class, JwtAuthenticationEntryPoint.class, JwtAccessDeniedHandler.class, ProjectPermissions.class})
 public class ProjectServiceApplication {
 	public static void main(String[] args) {
 		SpringApplication.run(ProjectServiceApplication.class, args);

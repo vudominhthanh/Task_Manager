@@ -5,6 +5,7 @@ import Task_Manager.task_service.entity.TaskStatus;
 import lombok.Builder;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -23,6 +24,20 @@ public class TaskResponse {
     private LocalDate startDate;
     private LocalDate dueDate;
     private UUID parentTaskId;
+
+    @Builder.Default
+    private BigDecimal estimatedEffort = BigDecimal.ZERO;
+
+    @Builder.Default
+    private BigDecimal actualEffort = BigDecimal.ZERO;
+
+    @Builder.Default
+    private BigDecimal completionPercentage = BigDecimal.ZERO;
+
+
+    private BigDecimal contributionPercentage;
+
+    private Double position;
 
     private String assigneeName;
     private String assigneeAvatar;

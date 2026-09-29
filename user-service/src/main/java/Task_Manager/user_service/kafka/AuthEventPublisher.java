@@ -43,5 +43,9 @@ public class AuthEventPublisher {
         sendEvent("REGISTRATION_OTP", UUID.randomUUID(), payload);
 //        log.info("📢 [KAFKA] Đã gửi sự kiện phát sinh OTP sang topic: {}", TOPIC);
     }
+
+    public void publishForgotPasswordOtp(Map<String, Object> payload) {
+        sendEvent("FORGOT_PASSWORD_OTP", UUID.randomUUID(), payload);
+    }
 }
 record AuthEvent(String type, Object payload) {}

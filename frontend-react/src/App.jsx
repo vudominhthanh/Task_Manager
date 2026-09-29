@@ -21,14 +21,17 @@ import ProjectList from "./components/main/ProjectList";
 
 import SettingsLayout from "./components/layout/SettingsLayout";
 import ProfileSettingsPage from "./components/settings/ProfileSettingsPage";
-import SecuritySettingsPage from "./components/settings/SecuritySettingsPage";
 import NotificationSettingsPage from "./components/settings/NotificationSettingsPage";
 import PreferenceSettingsPage from "./components/settings/PreferenceSettingsPage";
 
-import AdminUsersPage from "./components/settings/AdminUsersPage";
-import AdminProjectsPage from "./components/settings/AdminProjectsPage";
-import AdminAuditLogsPage from "./components/settings/AdminAuditLogsPage";
-import AdminSystemConfigPage from "./components/settings/AdminSystemConfigPage";
+import ProjectTaskWrapper from "./components/layout/ProjectTaskWrapper"
+import SystemAdminDashboard from "./components/layout/SystemAdminDashboard";
+import SystemMonitorDashboard from "./components/admin/SystemMonitorDashboard";
+import UserManagementPage from "./components/admin/UserManagementPage"
+import ProjectManagementPage from "./components/admin/ProjectManagementPage"
+import ServerStatusPage from "./components/admin/ServerStatusPage"
+import SystemLogsPage from "./components/admin/SystemLogsPage"
+import SettingsPage from "./components/admin/SettingsPage"
 
 function App() {
   const [token, setToken] = useState(localStorage.getItem("accessToken"));
@@ -56,8 +59,7 @@ function App() {
           <Route path="/reports" element={<Reports />} />
 
           <Route path="project/:projectId" element={<ProjectLayout />} >
-            <Route index element={<KanbanBoard />} />
-            <Route path="list" element={<ProjectList />} />       
+            <Route index element={<ProjectTaskWrapper />} />  
             <Route path="calendar" element={<ProjectCalendar />}/>
             <Route path="overview" element={<ProjectOverview />}/>
             <Route path="activities" element={<ProjectActivities />}/>
@@ -69,20 +71,24 @@ function App() {
             <Route index element={<Navigate to="profile" replace />} />
             
             <Route path="profile" element={<ProfileSettingsPage />} />
-            <Route path="security" element={<SecuritySettingsPage />} />
             <Route path="notifications" element={<NotificationSettingsPage />} />
             <Route path="preferences" element={<PreferenceSettingsPage />} />
-
-            <Route path="admin/users" element={<AdminUsersPage />} />
-            <Route path="admin/projects" element={<AdminProjectsPage />} />
-            <Route path="admin/audit-logs" element={<AdminAuditLogsPage />} />
-            <Route path="admin/config" element={<AdminSystemConfigPage />} />
           </Route>
 
         </Route>
 
-        <Route path="*" element={<Navigate to="/" />} />
+        <Route path="/admin-dashboard" element={<SystemAdminDashboard />} > 
+          <Route index element={<SystemMonitorDashboard />} />
+          <Route path="user-manage" element={<UserManagementPage />} />
+          <Route path="project-manage" element={<ProjectManagementPage />} />
+          <Route path="server" element={<ServerStatusPage />} />
+          <Route path="logs" element={<SystemLogsPage />} />
+          <Route path="settings" element={<SettingsPage />} />
+        </Route>
+
       </Routes>
+
+      
 
       <Toaster 
         position="top-right" 

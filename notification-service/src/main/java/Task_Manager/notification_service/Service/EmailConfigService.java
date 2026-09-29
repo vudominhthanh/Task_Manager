@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSenderImpl;
 import org.springframework.stereotype.Service;
+import jakarta.annotation.PostConstruct;
 
 import java.util.Properties;
 
@@ -15,7 +16,7 @@ import java.util.Properties;
 public class EmailConfigService {
 
     private SmtpConfig currentConfig = new SmtpConfig(
-            25, ".pdf, .png, .jpg, .docx, .zip", "smtp.gmail.com", "587", "notifications@workflow.com", "", false
+            25, ".pdf, .png, .jpg, .docx, .zip", "smtp.gmail.com", "587", "thanhvu0268108@gmail.com", "qikz kovp hmke oacv", false
     );
 
     private JavaMailSenderImpl mailSender;
@@ -31,6 +32,12 @@ public class EmailConfigService {
         private String smtpEmail;
         private String smtpPassword;
         private Boolean systemMaintenance;
+    }
+
+    @PostConstruct
+    public void init() {
+        updateConfig(this.currentConfig);
+        log.info("✅ MailSender đã được khởi tạo tự động lúc startup.");
     }
 
     public SmtpConfig getCurrentConfig() {
@@ -71,6 +78,29 @@ public class EmailConfigService {
             mailSender.send(message);
         } catch (Exception e) {
             log.error("❌ Lỗi gửi SMTP: {}", e.getMessage());
+        }
+    }
+
+    public boolean sendEmail(String toEmail, String subject, String textBody) {
+        if (this.mailSender == null || currentConfig.getSmtpPassword() == null
+                || currentConfig.getSmtpPassword().isBlank()
+                || currentConfig.getSmtpPassword().equals("MẬT_KHẨU_ỨNG_DỤNG_CỦA_BẠN")) {
+
+            log.warn("⚠️ Bỏ qua gửi SMTP tới {} vì chưa cấu hình mật khẩu hợp lệ.", toEmail);
+            return false;
+        }
+        try {
+            SimpleMailMessage message = new SimpleMailMessage();
+            message.setFrom(currentConfig.getSmtpEmail());
+            message.setTo(toEmail);
+            message.setSubject(subject);
+            message.setText(textBody);
+
+            mailSender.send(message);
+            return true;
+        } catch (Exception e) {
+            log.error("❌ Lỗi gửi SMTP tới {}: {}", toEmail, e.getMessage());
+            return false;
         }
     }
 }

@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
@@ -26,13 +25,15 @@ public class NotificationConsumer {
     @KafkaListener(topics = "auth_events", groupId = "notifications")
     public void handleAuthEvents(String messagePayload) {
         processEventSafely(messagePayload, "auth_events", (eventType, payload) -> {
-            if ("REGISTRATION_OTP".equals(eventType)) {
-                String email = payload.path("email").asText(null);
-                String otp = payload.path("otp").asText(null);
-                String fullName = payload.path("fullName").asText(email);
+            String email = payload.path("email").asText(null);
+            String otp = payload.path("otp").asText(null);
+            String fullName = payload.path("fullName").asText(email);
 
-                if (email != null && otp != null) {
+            if (email != null && otp != null) {
+                if ("REGISTRATION_OTP".equals(eventType)) {
                     sendOtpEmail(email, otp, fullName);
+                } else if ("FORGOT_PASSWORD_OTP".equals(eventType)) {
+                    sendForgotPasswordOtpEmail(email, otp, fullName);
                 }
             }
         });
@@ -49,7 +50,6 @@ public class NotificationConsumer {
             UUID actorId = extractUuid(payload, "createdBy", "updatedBy");
             if (actorId == null) actorId = reporterId;
 
-            // Người nhận thông báo: nếu người sửa là assignee thì báo cho reporter, ngược lại báo cho assignee
             UUID recipientId = (assigneeId != null && !assigneeId.equals(actorId)) ? assigneeId :
                     (reporterId != null && !reporterId.equals(actorId) ? reporterId : null);
 
@@ -57,7 +57,6 @@ public class NotificationConsumer {
             String taskTitle = taskNode.path("title").asText("công việc");
             String projectName = resolveProjectName(payload, taskNode);
 
-            // Bổ sung actorName vào đầu câu
             String msg = switch (eventType) {
                 case "TASK_CREATED", "SUB_TASK_CREATED" -> actorName + " đã phân công cho bạn công việc: \"" + taskTitle + "\"";
                 case "TASK_UPDATED" -> actorName + " đã cập nhật thông tin công việc: \"" + taskTitle + "\"";
@@ -81,7 +80,6 @@ public class NotificationConsumer {
                 authorId = extractUuid(payload, "createdBy");
             }
 
-            // Tìm recipientId: từ payload -> task -> assigneeId / taskOwnerId
             UUID recipientId = extractUuid(payload, "recipientId", "assigneeId", "taskOwnerId");
             if (recipientId == null && payload.hasNonNull("task")) {
                 recipientId = extractUuid(payload.path("task"), "assigneeId", "reporterId");
@@ -93,7 +91,6 @@ public class NotificationConsumer {
             String targetName = payload.path("targetName").asText("công việc");
             String projectName = payload.path("projectName").asText("Dự án");
 
-            // Bổ sung actorName
             String msg = actorName + " đã bình luận trong \"" + targetName + "\": \"" + preview + "\"";
 
             notifyIfValid(recipientId, authorId, eventType, targetName, projectName, msg);
@@ -147,7 +144,6 @@ public class NotificationConsumer {
                 case "ATTACHMENT_DELETED" -> actorName + " đã gỡ tệp \"" + fileName + "\" khỏi công việc: \"" + taskTitle + "\"";
                 default -> null;
             };
-
             notifyIfValid(recipientId, actorId, eventType, taskTitle, projectName, msg);
         });
     }
@@ -166,7 +162,6 @@ public class NotificationConsumer {
                         targetUserIds.add(UUID.fromString(idNode.asText()));
                     }
                 }
-
                 notificationService.createGlobalNotification(adminId, message, targetUserIds);
             }
         });
@@ -185,8 +180,6 @@ public class NotificationConsumer {
     }
 
     private void notifyIfValid(UUID recipientId, UUID actorId, String eventType, String targetName, String projectName, String message) {
-        log.info("🔍 Chuẩn bị lưu DB -> type: {}, recipientId: {}, actorId: {}, msg: {}", eventType, recipientId, actorId, message);
-
         if (recipientId != null && !recipientId.equals(actorId) && message != null) {
             notificationService.createNotification(recipientId, actorId, eventType, targetName, projectName, message);
         }
@@ -228,25 +221,49 @@ public class NotificationConsumer {
         if (payload.hasNonNull("projectName") && !payload.get("projectName").asText().isBlank()) {
             return payload.get("projectName").asText();
         }
-        if (taskNode.hasNonNull("projectName") && !taskNode.get("projectName").asText().isBlank()) {
+        if (taskNode != null && taskNode.hasNonNull("projectName") && !taskNode.get("projectName").asText().isBlank()) {
             return taskNode.get("projectName").asText();
         }
         return "Dự án chung";
     }
 
     private void sendOtpEmail(String email, String otp, String fullName) {
-        log.info("📩 [OTP-WORKER] Đang xử lý gửi OTP [{}] tới: {}", otp, email);
+        log.info("📩 [OTP-REGISTRATION-WORKER] Đang xử lý gửi OTP đăng ký [{}] tới: {}", otp, email);
+        String subject = "[Task Manager] Mã xác nhận đăng ký tài khoản";
+        String text = String.format(
+                "Xin chào %s,\n\nMã OTP xác thực đăng ký tài khoản của bạn là: %s\nMã có hiệu lực trong vòng 5 phút.\n\nNếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email.",
+                fullName, otp
+        );
+
         try {
-            SimpleMailMessage mail = new SimpleMailMessage();
-            mail.setTo(email);
-            mail.setSubject("[Task Manager] Mã xác nhận đăng ký tài khoản");
-            mail.setText(String.format(
-                    "Xin chào %s,\n\nMã OTP xác thực đăng ký tài khoản của bạn là: %s\nMã có hiệu lực trong vòng 5 phút.\n\nNếu bạn không thực hiện yêu cầu này, vui lòng bỏ qua email.",
-                    fullName, otp
-            ));
-            emailConfigService.sendOtp(email, otp, fullName);
+            boolean isSent = emailConfigService.sendEmail(email, subject, text);
+            if (isSent) {
+                log.info("✅ Gửi mail đăng ký thành công tới: {}", email);
+            } else {
+                log.info("⚠️ Không thể gửi mail đăng ký tới: {}", email);
+            }
         } catch (Exception e) {
-            log.warn("⚠️ Chưa cấu hình SMTP hoặc lỗi gửi mail thực ({}) -> Hãy dùng OTP từ log trên để test.", e.getMessage());
+            log.error("❌ Lỗi ngoại lệ khi gửi mail đăng ký tới {} - Chi tiết: {}", email, e.getMessage(), e);
+        }
+    }
+
+    private void sendForgotPasswordOtpEmail(String email, String otp, String fullName) {
+        log.info("📩 [OTP-FORGOT-PASSWORD-WORKER] Đang xử lý gửi OTP quên mật khẩu [{}] tới: {}", otp, email);
+        String subject = "[Task Manager] Mã xác nhận khôi phục mật khẩu";
+        String text = String.format(
+                "Xin chào %s,\n\nMã OTP để khôi phục mật khẩu tài khoản của bạn là: %s\nMã có hiệu lực trong vòng 5 phút.\n\nNếu bạn không yêu cầu khôi phục mật khẩu, vui lòng bỏ qua email này.",
+                fullName, otp
+        );
+
+        try {
+            boolean isSent = emailConfigService.sendEmail(email, subject, text);
+            if (isSent) {
+                log.info("✅ Gửi mail quên mật khẩu thành công tới: {}", email);
+            } else {
+                log.info("⚠️ Không thể gửi mail quên mật khẩu tới: {}", email);
+            }
+        } catch (Exception e) {
+            log.error("❌ Lỗi ngoại lệ khi gửi mail quên mật khẩu tới {} - Chi tiết: {}", email, e.getMessage(), e);
         }
     }
 

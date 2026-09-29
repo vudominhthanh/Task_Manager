@@ -10,6 +10,7 @@ import java.util.UUID;
 public class CommentResponse {
     private UUID id;
     private UUID taskId;
+    private UUID projectId;
     private UUID userId;
     private String content;
     private UUID parentCommentId;

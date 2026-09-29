@@ -1,7 +1,12 @@
 package Task_Manager.task_service.service.impl;
 
+import Task_Manager.common_lib.constant.ProjectPermissions;
+import Task_Manager.common_lib.exception.ForbiddenAccessException;
+import Task_Manager.common_lib.exception.ResourceNotFoundException;
+import Task_Manager.common_lib.utils.Translator;
 import Task_Manager.task_service.client.ProjectClient;
 import Task_Manager.task_service.client.UserClient;
+import Task_Manager.task_service.dto.AttachmentEventDto;
 import Task_Manager.task_service.dto.AttachmentResponse;
 import Task_Manager.task_service.dto.UserDto;
 import Task_Manager.task_service.entity.Attachment;
@@ -10,15 +15,12 @@ import Task_Manager.task_service.kafka.AttachmentEventPublisher;
 import Task_Manager.task_service.mapper.AttachmentMapper;
 import Task_Manager.task_service.repository.AttachmentRepository;
 import Task_Manager.task_service.repository.TaskRepository;
+import Task_Manager.task_service.security.TaskSecurity;
 import Task_Manager.task_service.service.AttachmentService;
 import Task_Manager.task_service.service.StorageService;
-
-import Task_Manager.common_lib.exception.ResourceNotFoundException;
-import Task_Manager.common_lib.exception.ForbiddenAccessException;
-import Task_Manager.common_lib.utils.Translator;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
@@ -36,21 +38,24 @@ public class AttachmentServiceImpl implements AttachmentService {
     private final TaskRepository taskRepository;
     private final AttachmentMapper attachmentMapper;
     private final AttachmentEventPublisher attachmentEventPublisher;
-    private final ProjectClient projectClient;
+    private final TaskSecurity taskSecurity;
     private final UserClient userClient;
     private final StorageService storageService;
 
     @Override
     @Transactional
-    public AttachmentResponse uploadAttachment(UUID taskId, UUID userId, MultipartFile file, boolean isSystemAdmin) throws IOException {
+    public AttachmentResponse uploadAttachment(UUID taskId, UUID userId, MultipartFile file) throws IOException {
         Task task = taskRepository.findById(taskId)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.toLocale("error.task.not_found", taskId)));
 
-        validateAddPermission(task, userId, isSystemAdmin);
+        validateTaskAttachmentAccess(task, userId);
 
         String s3Key = storageService.uploadFile(file, task.getProject(), taskId);
 
-        String rawFileName = file.getOriginalFilename() != null ? file.getOriginalFilename() : "attachment";
+        String rawFileName = (file.getOriginalFilename() != null && !file.getOriginalFilename().isBlank())
+                ? file.getOriginalFilename()
+                : "attachment";
+
         Attachment attachment = Attachment.builder()
                 .task(task)
                 .userId(userId)
@@ -58,65 +63,55 @@ public class AttachmentServiceImpl implements AttachmentService {
                 .fileType(file.getContentType() != null ? file.getContentType() : "application/octet-stream")
                 .fileSize(file.getSize())
                 .s3Key(s3Key)
+                .visibilityType("PROJECT")
                 .build();
 
         Attachment savedAttachment = attachmentRepository.save(attachment);
 
         AttachmentResponse enriched = enrichSingleAttachment(attachmentMapper.toResponse(savedAttachment));
 
-        UUID recipientId = (task.getAssignee() != null && !task.getAssignee().equals(userId))
-                ? task.getAssignee()
-                : (task.getReporter() != null && !task.getReporter().equals(userId) ? task.getReporter() : null);
-
-        Map<String, Object> eventPayload = new HashMap<>();
-        eventPayload.put("attachment", enriched);
-        eventPayload.put("attachmentId", savedAttachment.getId());
-        eventPayload.put("createdBy", userId);
-        eventPayload.put("username", resolveName(enriched.getUserName()));
-        eventPayload.put("userAvatar", resolveAvatar(enriched.getUserAvatar()));
-        eventPayload.put("targetName", resolveFileName(enriched.getFileName()));
-        eventPayload.put("taskId", task.getId());
-        eventPayload.put("taskTitle", task.getTitle() != null ? task.getTitle() : "Công việc");
-        eventPayload.put("projectId", task.getProject());
-        eventPayload.put("recipientId", recipientId);
-
-        attachmentEventPublisher.publishAttachmentCreated(savedAttachment.getId(), eventPayload);
+        UUID recipientId = resolveRecipient(task, userId);
+        AttachmentEventDto event = attachmentMapper.toAttachmentCreatedEvent(task, enriched, userId, recipientId);
+        attachmentEventPublisher.publishAttachmentCreated(savedAttachment.getId(), event);
 
         return enriched;
     }
 
     @Override
     @Transactional
-    public void deleteAttachment(UUID attachmentId, UUID userId, boolean isSystemAdmin) {
+    public void deleteAttachment(UUID attachmentId, UUID userId) {
         Attachment attachment = attachmentRepository.findByIdWithTask(attachmentId)
                 .orElseThrow(() -> new ResourceNotFoundException(Translator.toLocale("error.attachment.not_found", attachmentId)));
 
         Task task = attachment.getTask();
-        validateDeletePermission(task, attachment, userId, isSystemAdmin);
+
+        boolean isOwner = attachment.getUserId().equals(userId);
+        if (!isOwner) {
+            boolean canDeleteAny = taskSecurity.hasTaskPermission(task.getId(), ProjectPermissions.ATTACHMENT_DELETE_ANY);
+            if (!canDeleteAny) {
+                throw new ForbiddenAccessException("Bạn không có quyền xóa tệp đính kèm này!");
+            }
+        }
 
         storageService.deleteFile(attachment.getS3Key());
         attachmentRepository.deleteById(attachmentId);
 
-        UUID recipientId = (task != null && task.getAssignee() != null && !task.getAssignee().equals(userId))
-                ? task.getAssignee()
-                : (task != null && task.getReporter() != null && !task.getReporter().equals(userId) ? task.getReporter() : null);
-
-        Map<String, Object> eventPayload = new HashMap<>();
-        eventPayload.put("attachmentId", attachmentId);
-        eventPayload.put("deletedBy", userId);
-        eventPayload.put("targetName", resolveFileName(attachment.getFileName()));
-        if (task != null) {
-            eventPayload.put("taskId", task.getId());
-            eventPayload.put("taskTitle", task.getTitle() != null ? task.getTitle() : "Công việc");
-            eventPayload.put("projectId", task.getProject());
-        }
-        eventPayload.put("recipientId", recipientId);
-
-        attachmentEventPublisher.publishAttachmentDeleted(attachmentId, eventPayload);
+        UUID recipientId = resolveRecipient(task, userId);
+        AttachmentEventDto event = attachmentMapper.toAttachmentDeletedEvent(task, attachment, userId, recipientId);
+        attachmentEventPublisher.publishAttachmentDeleted(attachmentId, event);
     }
 
     @Override
     public List<AttachmentResponse> getAttachmentsByTaskId(UUID taskId) {
+        Task task = taskRepository.findById(taskId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy công việc"));
+
+        Authentication authentication = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (authentication != null && authentication.isAuthenticated() && !authentication.getName().equals("anonymousUser")) {
+            UUID userId = UUID.fromString(authentication.getName());
+            validateTaskAttachmentAccess(task, userId);
+        }
+
         List<AttachmentResponse> responses = attachmentRepository.findByTaskId(taskId).stream()
                 .map(attachmentMapper::toResponse)
                 .collect(Collectors.toList());
@@ -140,37 +135,12 @@ public class AttachmentServiceImpl implements AttachmentService {
         return storageService.downloadFile(attachment.getS3Key());
     }
 
-    private void validateAddPermission(Task task, UUID userId, boolean isSystemAdmin) {
-        if (isSystemAdmin) return;
-        UUID projectId = task.getProject();
-        if (projectId != null && projectClient.isProjectAdmin(projectId, userId)) return;
-        if (task.getAssignee() != null && task.getAssignee().equals(userId)) return;
-        if (task.getReporter() != null && task.getReporter().equals(userId)) return;
+    @Override
+    public byte[] getAttachmentBytes(UUID attachmentId, UUID userId) throws IOException {
+        Attachment attachment = attachmentRepository.findByIdWithTask(attachmentId)
+                .orElseThrow(() -> new ResourceNotFoundException(Translator.toLocale("error.attachment.not_found", attachmentId)));
 
-        if (task.getParentTask() != null) {
-            Task parent = task.getParentTask();
-            if (parent.getAssignee() != null && parent.getAssignee().equals(userId)) return;
-            if (parent.getReporter() != null && parent.getReporter().equals(userId)) return;
-        }
-
-        throw new ForbiddenAccessException(Translator.toLocale("error.attachment.access_denied_add"));
-    }
-
-    private void validateDeletePermission(Task task, Attachment attachment, UUID userId, boolean isSystemAdmin) {
-        if (isSystemAdmin) return;
-
-        UUID projectId = (task != null && task.getProject() != null) ? task.getProject() : null;
-        if (projectId != null && projectClient.isProjectAdmin(projectId, userId)) return;
-
-        if (attachment.getUserId().equals(userId)) return;
-
-        if (task != null && task.getAssignee() != null && task.getAssignee().equals(userId)) return;
-        if (task != null && task.getParentTask() != null) {
-            Task parent = task.getParentTask();
-            if (parent.getAssignee() != null && parent.getAssignee().equals(userId)) return;
-        }
-
-        throw new ForbiddenAccessException(Translator.toLocale("error.attachment.access_denied_delete"));
+        return storageService.downloadFile(attachment.getS3Key());
     }
 
     private AttachmentResponse enrichSingleAttachment(AttachmentResponse response) {
@@ -208,15 +178,29 @@ public class AttachmentServiceImpl implements AttachmentService {
         return responses;
     }
 
-    private String resolveName(String name) {
-        return (name != null && !name.trim().isEmpty()) ? name : "Thành viên";
+    private UUID resolveRecipient(Task task, UUID userId) {
+        if (task == null) return null;
+        if (task.getAssignee() != null && !task.getAssignee().equals(userId)) return task.getAssignee();
+        return (task.getReporter() != null && !task.getReporter().equals(userId)) ? task.getReporter() : null;
     }
 
-    private String resolveAvatar(String avatar) {
-        return (avatar != null && !avatar.trim().isEmpty()) ? avatar : "U";
-    }
+    private void validateTaskAttachmentAccess(Task task, UUID userId) {
+        boolean isDirect = (task.getAssignee() != null && task.getAssignee().equals(userId)) ||
+                (task.getReporter() != null && task.getReporter().equals(userId));
+        if (isDirect) return;
 
-    private String resolveFileName(String fileName) {
-        return (fileName != null && !fileName.trim().isEmpty()) ? fileName : "Tệp đính kèm";
+        if (task.getParentTask() != null) {
+            Task parent = task.getParentTask();
+            boolean isParentInvolved = (parent.getAssignee() != null && parent.getAssignee().equals(userId)) ||
+                    (parent.getReporter() != null && parent.getReporter().equals(userId));
+            if (isParentInvolved) return;
+        } else {
+            List<Task> subTasks = taskRepository.findByParentTaskId(task.getId());
+            boolean isSubtaskAssignee = subTasks.stream()
+                    .anyMatch(st -> st.getAssignee() != null && st.getAssignee().equals(userId));
+            if (isSubtaskAssignee) return;
+        }
+
+        throw new ForbiddenAccessException("Bạn không có quyền tham gia vào không gian của công việc này!");
     }
 }

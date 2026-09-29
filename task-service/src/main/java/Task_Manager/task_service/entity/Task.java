@@ -7,9 +7,9 @@ import lombok.experimental.SuperBuilder;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -22,6 +22,10 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class Task extends AuditableEntity {
+    @Id
+    @GeneratedValue(strategy = GenerationType.UUID)
+    private UUID id;
+
     @Column(name = "project_id", nullable = false)
     private UUID project;
 
@@ -62,7 +66,27 @@ public class Task extends AuditableEntity {
     @JoinColumn(name = "parent_task_id")
     private Task parentTask;
 
+    @Column(name = "estimated_effort", precision = 8, scale = 2)
+    @Builder.Default
+    private BigDecimal estimatedEffort = BigDecimal.ZERO;
+
+    @Column(name = "actual_effort", precision = 8, scale = 2)
+    @Builder.Default
+    private BigDecimal actualEffort = BigDecimal.ZERO;
+
+    @Column(name = "completion_percentage", precision = 5, scale = 2)
+    @Builder.Default
+    private BigDecimal completionPercentage = BigDecimal.ZERO;
+
+    @Column(name = "position")
+    private Double position; // Dùng cho thuật toán sắp xếp kéo thả List/Kanban
+
+    @Column(name = "_updated_by")
+    private UUID updatedBy;
+
     @OneToMany(mappedBy = "parentTask", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<Task> subTasks = new ArrayList<>();
+
+
 }

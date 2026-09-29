@@ -1,13 +1,15 @@
 package Task_Manager.task_service.controller;
 
+import Task_Manager.common_lib.constant.ProjectPermissions;
 import Task_Manager.task_service.dto.TaskRequest;
 import Task_Manager.task_service.dto.TaskResponse;
+import Task_Manager.task_service.dto.TaskStatisticsDto;
 import Task_Manager.task_service.service.TaskService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.parameters.P;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -19,58 +21,54 @@ import java.util.UUID;
 public class TaskController {
     private final TaskService taskService;
 
-    private boolean checkIsSystemAdmin(Authentication authentication) {
-        if (authentication == null || authentication.getAuthorities() == null) {
-            return false;
-        }
-        return authentication.getAuthorities().stream()
-                .anyMatch(auth -> "SYS_AD".equalsIgnoreCase(auth.getAuthority())
-                        || "ROLE_SYS_AD".equalsIgnoreCase(auth.getAuthority()));
-    }
-
+    @PreAuthorize("@taskSecurity.hasTaskPermission(#id, T(Task_Manager.common_lib.constant.ProjectPermissions).TASK_VIEW)")
     @GetMapping("/{id}")
     public ResponseEntity<TaskResponse> getTaskById(@PathVariable UUID id) {
         return ResponseEntity.ok(taskService.getTaskById(id));
     }
 
+    @PreAuthorize("@taskSecurity.hasProjectPermission(#projectId, T(Task_Manager.common_lib.constant.ProjectPermissions).PROJECT_VIEW)")
     @GetMapping("/project/{projectId}")
-    public ResponseEntity<List<TaskResponse>> getTasksByProjectId(@PathVariable UUID projectId) {
-        return ResponseEntity.ok(taskService.getTaskByProjectId(projectId));
+    public ResponseEntity<List<TaskResponse>> getTasksByProjectId(
+            @PathVariable UUID projectId,
+            Authentication authentication) {
+        UUID userId = UUID.fromString(authentication.getName());
+        return ResponseEntity.ok(taskService.getTaskByProjectId(projectId, userId));
     }
 
+    @PreAuthorize("@taskSecurity.hasProjectPermission(#taskRequest.projectId, T(Task_Manager.common_lib.constant.ProjectPermissions).TASK_CREATE)")
     @PostMapping
     public ResponseEntity<TaskResponse> createTask(@RequestBody TaskRequest taskRequest, Authentication authentication) {
         UUID userId = UUID.fromString(authentication.getName());
-        boolean isSystemAdmin = checkIsSystemAdmin(authentication);
-        return ResponseEntity.status(HttpStatus.CREATED).body(taskService.createTask(taskRequest, userId, isSystemAdmin));
+        return ResponseEntity.status(HttpStatus.CREATED).body(taskService.createTask(taskRequest, userId));
     }
 
+    @PreAuthorize("@taskSecurity.hasTaskPermission(#parentTaskId, T(Task_Manager.common_lib.constant.ProjectPermissions).TASK_CREATE)")
     @PostMapping("/{parentTaskId}/sub-tasks")
-    public  ResponseEntity<TaskResponse> createSubTask(@PathVariable UUID parentTaskId, @RequestBody TaskRequest taskRequest, Authentication authentication) {
+    public ResponseEntity<TaskResponse> createSubTask(@PathVariable UUID parentTaskId, @RequestBody TaskRequest taskRequest, Authentication authentication) {
         UUID userId = UUID.fromString(authentication.getName());
-        boolean isSystemAdmin = checkIsSystemAdmin(authentication);
-        return  ResponseEntity.status(HttpStatus.CREATED).body(taskService.createSubTask(parentTaskId, taskRequest, userId, isSystemAdmin));
+        return ResponseEntity.status(HttpStatus.CREATED).body(taskService.createSubTask(parentTaskId, taskRequest, userId));
     }
 
+    @PreAuthorize("@taskSecurity.hasTaskPermission(#id, T(Task_Manager.common_lib.constant.ProjectPermissions).TASK_UPDATE)")
     @PutMapping("/{id}")
     public ResponseEntity<TaskResponse> updateTask(@PathVariable UUID id, @RequestBody TaskRequest taskRequest, Authentication authentication) {
         UUID userId = UUID.fromString(authentication.getName());
-        boolean isSystemAdmin = checkIsSystemAdmin(authentication);
-        return ResponseEntity.ok(taskService.updateTask(id, taskRequest, userId, isSystemAdmin));
+        return ResponseEntity.ok(taskService.updateTask(id, taskRequest, userId));
     }
 
+    @PreAuthorize("@taskSecurity.hasTaskPermission(#id, T(Task_Manager.common_lib.constant.ProjectPermissions).TASK_UPDATE)")
     @PatchMapping("/{id}/status")
     public ResponseEntity<TaskResponse> updateTaskStatus(@PathVariable UUID id, @RequestBody TaskRequest taskRequest, Authentication authentication) {
         UUID userId = UUID.fromString(authentication.getName());
-        boolean isSystemAdmin = checkIsSystemAdmin(authentication);
-        return ResponseEntity.ok(taskService.updateTaskStatus(id, taskRequest, userId, isSystemAdmin));
+        return ResponseEntity.ok(taskService.updateTaskStatus(id, taskRequest, userId));
     }
 
+    @PreAuthorize("@taskSecurity.hasTaskPermission(#id, T(Task_Manager.common_lib.constant.ProjectPermissions).TASK_DELETE)")
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deleteTask(@PathVariable UUID id, Authentication authentication) {
         UUID userId = UUID.fromString(authentication.getName());
-        boolean isSystemAdmin = checkIsSystemAdmin(authentication);
-        taskService.deleteTask(id, userId, isSystemAdmin);
+        taskService.deleteTask(id, userId);
         return ResponseEntity.noContent().build();
     }
 
@@ -89,5 +87,10 @@ public class TaskController {
     @GetMapping("/internal/project/{projectId}")
     public ResponseEntity<List<TaskResponse>> getTasksByProjectIdInternal(@PathVariable UUID projectId) {
         return ResponseEntity.ok(taskService.getTaskByProjectId(projectId));
+    }
+
+    @GetMapping("/internal/project/{projectId}/statistics")
+    public ResponseEntity<TaskStatisticsDto> getTaskStatisticsInternal(@PathVariable UUID projectId) {
+        return ResponseEntity.ok(taskService.getTaskStatistics(projectId));
     }
 }

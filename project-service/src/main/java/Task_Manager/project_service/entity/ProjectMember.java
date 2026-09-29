@@ -22,10 +22,9 @@ public class ProjectMember {
     @Column(name = "user_id",nullable = false)
     private UUID userId;
 
-    @Enumerated(EnumType.STRING)
-    @Column(length = 10,nullable = false, name = "role")
-    @Builder.Default
-    private ProjectRole projectRole = ProjectRole.MEMBER;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "role_id")
+    private ProjectRole projectRole;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "project_id", insertable = false, updatable = false)

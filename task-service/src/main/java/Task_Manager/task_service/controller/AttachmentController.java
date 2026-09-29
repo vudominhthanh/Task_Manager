@@ -1,5 +1,6 @@
 package Task_Manager.task_service.controller;
 
+import Task_Manager.common_lib.constant.ProjectPermissions;
 import Task_Manager.task_service.dto.AttachmentResponse;
 import Task_Manager.task_service.service.AttachmentService;
 import lombok.RequiredArgsConstructor;
@@ -7,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -25,15 +27,7 @@ public class AttachmentController {
 
     private final AttachmentService attachmentService;
 
-    private boolean checkIsSystemAdmin(Authentication authentication) {
-        if (authentication == null || authentication.getAuthorities() == null) {
-            return false;
-        }
-        return authentication.getAuthorities().stream()
-                .anyMatch(auth -> "SYS_AD".equalsIgnoreCase(auth.getAuthority())
-                        || "ROLE_SYS_AD".equalsIgnoreCase(auth.getAuthority()));
-    }
-
+    @PreAuthorize("@taskSecurity.hasTaskPermission(#taskId, T(Task_Manager.common_lib.constant.ProjectPermissions).ATTACHMENT_VIEW)")
     @GetMapping
     public ResponseEntity<List<AttachmentResponse>> getAttachments(@PathVariable UUID taskId) {
         return ResponseEntity.ok(attachmentService.getAttachmentsByTaskId(taskId));
@@ -44,6 +38,7 @@ public class AttachmentController {
         return ResponseEntity.ok(attachmentService.getAttachmentById(attachmentId));
     }
 
+    @PreAuthorize("@taskSecurity.hasTaskPermission(#taskId, T(Task_Manager.common_lib.constant.ProjectPermissions).ATTACHMENT_UPLOAD)")
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<AttachmentResponse> uploadAttachment(
             @PathVariable UUID taskId,
@@ -51,20 +46,21 @@ public class AttachmentController {
             Authentication authentication) throws IOException {
 
         UUID userId = UUID.fromString(authentication.getName());
-        boolean isSystemAdmin = checkIsSystemAdmin(authentication);
-
-        AttachmentResponse response = attachmentService.uploadAttachment(taskId, userId, file, isSystemAdmin);
+        AttachmentResponse response = attachmentService.uploadAttachment(taskId, userId, file);
         return ResponseEntity.ok(response);
     }
 
+    @PreAuthorize("@taskSecurity.hasTaskPermission(#taskId, T(Task_Manager.common_lib.constant.ProjectPermissions).ATTACHMENT_VIEW)")
     @GetMapping("/{attachmentId}/view")
     public ResponseEntity<byte[]> viewOrDownloadAttachment(
             @PathVariable UUID taskId,
             @PathVariable UUID attachmentId,
-            @RequestParam(value = "download", defaultValue = "false") boolean isDownload) throws IOException {
+            @RequestParam(value = "download", defaultValue = "false") boolean isDownload,
+            Authentication authentication) throws IOException {
 
+        UUID userId = UUID.fromString(authentication.getName());
         AttachmentResponse metadata = attachmentService.getAttachmentById(attachmentId);
-        byte[] fileBytes = attachmentService.getAttachmentBytes(attachmentId);
+        byte[] fileBytes = attachmentService.getAttachmentBytes(attachmentId, userId);
 
         String dispositionType = isDownload ? "attachment" : "inline";
         String encodedFileName = URLEncoder.encode(metadata.getFileName(), StandardCharsets.UTF_8).replace("+", "%20");
@@ -76,15 +72,15 @@ public class AttachmentController {
                 .body(fileBytes);
     }
 
+    @PreAuthorize("@taskSecurity.hasTaskPermission(#taskId, T(Task_Manager.common_lib.constant.ProjectPermissions).ATTACHMENT_DELETE_OWN) " +
+            "or @taskSecurity.hasTaskPermission(#taskId, T(Task_Manager.common_lib.constant.ProjectPermissions).ATTACHMENT_DELETE_ANY)")
     @DeleteMapping("/{attachmentId}")
     public ResponseEntity<Void> deleteAttachment(
+            @PathVariable UUID taskId,
             @PathVariable UUID attachmentId,
             Authentication authentication) {
-
         UUID userId = UUID.fromString(authentication.getName());
-        boolean isSystemAdmin = checkIsSystemAdmin(authentication);
-
-        attachmentService.deleteAttachment(attachmentId, userId, isSystemAdmin);
+        attachmentService.deleteAttachment(attachmentId, userId);
         return ResponseEntity.noContent().build();
     }
 }
